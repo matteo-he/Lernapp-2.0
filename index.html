@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="de" class="antialiased">
 <head>
@@ -735,8 +734,13 @@
 
     const Dashboard = ({ userData, questions, onStartTrain }) => {
        const tiers = Object.values(userData.tiers || {});
-       const learned = tiers.filter(t => t > 3).length;
-       const progress = Math.round((learned / (questions.length || 1)) * 100);
+       const mastered = tiers.filter(t => t >= 4).length;
+       const inProgress = tiers.filter(t => t > 1 && t < 4).length;
+       const total = questions.length || 0;
+       // Any question not in tiers (never seen) or tier 1 counts as 'New'
+       const newCount = Math.max(0, total - mastered - inProgress);
+       
+       const progress = Math.round((mastered / (total || 1)) * 100);
        
        return (
          <div className="space-y-6 pb-24 px-4 pt-4">
@@ -756,12 +760,33 @@
             </div>
 
             <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm">
-               <h3 className="font-extrabold text-lg mb-4">Dein Lernpfad</h3>
-               <div className="h-6 bg-gray-100 dark:bg-gray-800 rounded-full w-full overflow-hidden border border-black/5 dark:border-white/5 relative">
+               <h3 className="font-extrabold text-lg mb-4">Dein Lernstatus</h3>
+               
+               {/* Progress Bar */}
+               <div className="h-6 bg-gray-100 dark:bg-gray-800 rounded-full w-full overflow-hidden border border-black/5 dark:border-white/5 relative mb-6">
                   <div className="absolute top-1.5 left-2 right-2 h-2 bg-white/10 rounded-full z-10"></div>
                   <div className="h-full bg-brand-yellow border-b-4 border-brand-yellowDark transition-all duration-1000" style={{width: `${Math.max(5, progress)}%`}}></div>
                </div>
-               <p className="text-sm font-bold text-gray-400 mt-3 text-center">{learned} von {questions.length} Fragen gemeistert</p>
+
+               {/* Stats Breakdown */}
+               <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
+                     <div className="text-xl font-black text-brand-red">{newCount}</div>
+                     <div className="text-[10px] font-bold text-brand-red uppercase">Neu / Offen</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/30">
+                     <div className="text-xl font-black text-brand-yellow">{inProgress}</div>
+                     <div className="text-[10px] font-bold text-brand-yellow uppercase">In Arbeit</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30">
+                     <div className="text-xl font-black text-brand-green">{mastered}</div>
+                     <div className="text-[10px] font-bold text-brand-green uppercase">Gemeistert</div>
+                  </div>
+               </div>
+               
+               <p className="text-xs font-medium text-gray-400 mt-4 text-center">
+                 "Gemeistert" bedeutet: Eine Frage wurde 3x in Folge richtig beantwortet.
+               </p>
             </div>
 
             <Button size="lg" fullWidth onClick={onStartTrain} className="py-5 text-xl shadow-xl">JETZT LERNEN</Button>
