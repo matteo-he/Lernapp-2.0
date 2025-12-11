@@ -1,0 +1,866 @@
+
+<!doctype html>
+<html lang="de" class="antialiased">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Lerntool E1 / E2a</title>
+  
+  <!-- Fonts: Inter + Rounded M+ für verspielteren Look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { 
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { 
+            sans: ['Nunito', 'sans-serif'], // Runder, freundlicher Font
+            body: ['Inter', 'sans-serif']
+          },
+          colors: {
+            gray: { 850: '#1f2937', 950: '#030712' },
+            // "Juicy" Brand Colors
+            brand: {
+              blue: '#3b82f6',
+              blueDark: '#2563eb',
+              green: '#58cc02', // Duo Green
+              greenDark: '#46a302',
+              red: '#ff4b4b',
+              redDark: '#ea2b2b',
+              yellow: '#ffc800',
+              yellowDark: '#e5a500'
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up': 'slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Bouncy
+            'pop': 'pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            'shake': 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
+            pop: { '0%': { transform: 'scale(0.95)' }, '100%': { transform: 'scale(1)' } },
+            shake: {
+              '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+              '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+              '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
+              '40%, 60%': { transform: 'translate3d(4px, 0, 0)' }
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- React & Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Styles -->
+  <style>
+    body { font-family: 'Nunito', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none;  scrollbar-width: none; }
+    
+    /* 3D Button Press Effect classes */
+    .btn-3d { transition: all 0.1s; transform: translateY(0); }
+    .btn-3d:active:not(:disabled) { transform: translateY(4px); border-bottom-width: 0px; margin-bottom: 4px; }
+    
+    .glass-nav {
+      background: rgba(255, 255, 255, 0.95);
+      border-top: 2px solid #f3f4f6;
+    }
+    .dark .glass-nav {
+      background: rgba(17, 24, 39, 0.95);
+      border-top: 2px solid #374151;
+    }
+  </style>
+
+  <!-- Firebase Bridge -->
+  <script type="module">
+    import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getFirestore, collection, doc, writeBatch, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLH5c69JKeFWcJyBpzRUfv720KjnnRIU8",
+      authDomain: "e1-und-e2a-lerntool.firebaseapp.com",
+      projectId: "e1-und-e2a-lerntool",
+      storageBucket: "e1-und-e2a-lerntool.firebasestorage.app",
+      messagingSenderId: "28649721297",
+      appId: "1:28649721297:web:432abbe98e34dd50fc24f0"
+    };
+
+    function ensureApp(){ return getApps().length ? getApp() : initializeApp(firebaseConfig); }
+    const app = ensureApp();
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    let resolveAuthReady;
+    let authReady = new Promise((res) => { resolveAuthReady = res; });
+
+    signInAnonymously(auth).catch((err) => console.error("Anon Auth Failed", err));
+    onAuthStateChanged(auth, (user) => { if(user && resolveAuthReady) resolveAuthReady(user); });
+
+    window.FIREBASE_BRIDGE = {
+      config: firebaseConfig, ensureApp, getFirestore, collection, doc, writeBatch, onSnapshot, setDoc,
+      getAuth, onAuthStateChanged, signInAnonymously, ensureAuthUser: () => authReady, app, db, auth
+    };
+    window.__FIREBASE_BRIDGE_READY__ = true;
+    window.dispatchEvent(new Event('firebase-bridge-ready'));
+  </script>
+</head>
+<body class="bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100 transition-colors duration-300 selection:bg-brand-blue selection:text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+    /* ================= CONSTANTS & UTILS ================= */
+    const FIRESTORE_COLLECTION = "questions";
+    const FIRESTORE_USERS_COLLECTION = "users";
+    const FIRESTORE_PROGRESS_COLLECTION = "userProgress";
+    const DEFAULT_QUESTIONS = [
+      { id: "bdg-43-1", question:"§ 43 BDG: Wie hat ein Beamter seine dienstlichen Aufgaben zu erfüllen?", choices:["Rechtskonform.","Treu, gewissenhaft und unparteiisch.","Nur nach Weisung.","Vertrauenswahrend.","Weisungsungebunden."], correct:[0,1,3], explain:"§ 43 BDG: Rechtstreue, Gewissenhaftigkeit, Unparteilichkeit, Vertrauenswahrung.", law_ref:"BDG § 43", tags:["BDG"], difficulty:1 },
+      { id:"spg-1-1", question:"Welche Aufgabe hat die Sicherheitspolizei?", choices:["Gefahrenabwehr","Strafjustiz","Verkehrskontrolle","Grenzschutz","Verwaltung"], correct:[0], explain:"Erste allgemeine Hilfeleistungspflicht und Gefahrenabwehr.", law_ref:"SPG", tags:["SPG"], difficulty:1 }
+    ];
+    
+    function xmur3(str){ let h = 1779033703 ^ str.length; for(let i=0;i<str.length;i++) h = Math.imul(h ^ str.charCodeAt(i), 3432918353); return function(){ h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return (h ^ h >>> 16) >>> 0; } }
+    function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
+    function seededShuffle(array, seedStr){ const rng = mulberry32(xmur3(seedStr)()); const a = [...array]; for(let i=a.length-1;i>0;i--){ const j = Math.floor(rng()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
+    function cloneValue(val){ return JSON.parse(JSON.stringify(val || null)) || val; }
+    function hashPassword(str=""){ let hash = 0; for(let i=0;i<str.length;i++){ hash = (hash << 5) - hash + str.charCodeAt(i); hash |= 0; } return `h${Math.abs(hash)}`; }
+    function generateId(prefix="id"){ return `${prefix.toLowerCase().replace(/[^a-z0-9]/g,"")}-${Math.random().toString(36).slice(2,8)}`; }
+    
+    function weightedOrder(items, tierResolver, seedStr) {
+      const rng = mulberry32(xmur3(seedStr)());
+      const getWeight = (tier) => ({1:5,2:3,3:2,4:1.2,5:1}[tier] || 2);
+      return [...items].filter(x => x && x.id).map(x => ({ x, k: (rng() || Number.EPSILON) ** (1 / getWeight(tierResolver(x.id))) })).sort((a,b) => b.k - a.k).map(o => o.x);
+    }
+
+    /* ================= UI COMPONENTS ================= */
+    const IconBase = ({children, className}) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>;
+    
+    // Explicit Component Definitions for stability
+    const DashboardIcon = (p) => <IconBase {...p}><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></IconBase>;
+    const TrainIcon = (p) => <IconBase {...p}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 12h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></IconBase>;
+    const AdminIcon = (p) => <IconBase {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></IconBase>;
+    const UserIcon = (p) => <IconBase {...p}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
+    const CloudIcon = (p) => <IconBase {...p}><path d="M17.5 19c0-1.7-1.3-3-3-3h-1.1c-.1-2.6-2.2-4.6-4.8-4.6-2.3 0-4.3 1.7-4.7 4l-.1.6H3c-1.7 0-3 1.3-3 3s1.3 3 3 3h14.5c1.7 0 3-1.3 3-3z"/></IconBase>;
+    const CloudOffIcon = (p) => <IconBase {...p}><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></IconBase>;
+    const CheckIcon = (p) => <IconBase {...p}><path d="M20 6 9 17l-5-5"/></IconBase>;
+    const XIcon = (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
+    const TrashIcon = (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></IconBase>;
+    const EditIcon = (p) => <IconBase {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></IconBase>;
+    const PlusIcon = (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>;
+    const LogOutIcon = (p) => <IconBase {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
+    const LockIcon = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
+    const FlameIcon = (p) => <IconBase {...p}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.5-3.3.3-1.09.9-1.5.9-1.5z"/></IconBase>;
+    const FlagIcon = (p) => <IconBase {...p}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></IconBase>;
+    const ChevronRightIcon = (p) => <IconBase {...p}><path d="m9 18 6-6-6-6"/></IconBase>;
+
+    const Icons = {
+      Dashboard: DashboardIcon, Train: TrainIcon, Admin: AdminIcon, User: UserIcon, Cloud: CloudIcon, CloudOff: CloudOffIcon,
+      Check: CheckIcon, X: XIcon, Trash: TrashIcon, Edit: EditIcon, Plus: PlusIcon, LogOut: LogOutIcon, Lock: LockIcon,
+      Flame: FlameIcon, Flag: FlagIcon, ChevronRight: ChevronRightIcon
+    };
+
+    const Card = ({children, className="", onClick}) => (
+      <div onClick={onClick} className={`bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-200 dark:border-gray-700 shadow-[0_2px_0_0_rgba(229,231,235,1)] dark:shadow-[0_2px_0_0_rgba(55,65,81,1)] transition-transform ${className}`}>
+        {children}
+      </div>
+    );
+
+    // 3D Button Component (Duolingo Style)
+    const Button = ({children, onClick, variant="primary", className="", size="md", disabled=false, type="button", fullWidth=false}) => {
+      // Style Configurations
+      const styles = {
+        primary: "bg-brand-blue border-brand-blueDark text-white active:bg-brand-blueDark",
+        success: "bg-brand-green border-brand-greenDark text-white active:bg-brand-greenDark",
+        danger: "bg-brand-red border-brand-redDark text-white active:bg-brand-redDark",
+        secondary: "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700",
+        ghost: "bg-transparent border-transparent text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shadow-none border-0",
+      };
+      
+      const sizes = { 
+        sm: "px-3 py-1 text-xs min-h-[32px]", 
+        md: "px-5 py-3 text-sm min-h-[46px]", 
+        lg: "px-8 py-3.5 text-base font-bold min-h-[52px]" 
+      };
+
+      const base = `
+        btn-3d uppercase tracking-wide font-bold rounded-2xl flex items-center justify-center 
+        border-b-4 focus:outline-none select-none
+        ${disabled ? 'opacity-50 cursor-not-allowed border-b-0 translate-y-0' : 'cursor-pointer'}
+      `;
+
+      return (
+        <button 
+          type={type} 
+          onClick={onClick} 
+          disabled={disabled} 
+          className={`${base} ${styles[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    };
+
+    const SyncStatus = ({ status, type="Daten" }) => {
+      const iconClass = "w-3 h-3";
+      if (status === 'synced') return <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-brand-green bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-lg"><Icons.Check className={iconClass}/> {type} Synced</div>;
+      if (status === 'syncing') return <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-brand-blue bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-lg animate-pulse"><Icons.Cloud className={iconClass}/> Syncing</div>;
+      if (status === 'error') return <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-brand-red bg-red-100 dark:bg-red-900/30 px-2 py-1 rounded-lg"><Icons.CloudOff className={iconClass}/> Offline</div>;
+      return <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-lg"><Icons.CloudOff className={iconClass}/> Local</div>;
+    };
+
+    const ProgressBar = ({ current, total }) => {
+      const pct = Math.min(100, Math.round((current / total) * 100));
+      return (
+        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full w-full overflow-hidden relative">
+          <div className="absolute top-1 left-2 h-1.5 w-full bg-white/20 rounded-full z-10"></div>
+          <div className="h-full bg-brand-green transition-all duration-500 ease-out relative" style={{width: `${pct}%`}}>
+            <div className="absolute inset-0 bg-white/20 rounded-full mt-1 ml-1 mr-1 h-1.5"></div>
+          </div>
+        </div>
+      );
+    };
+
+    const Modal = ({ isOpen, onClose, title, children }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
+          <div className="relative bg-white dark:bg-gray-900 w-full max-w-2xl rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto animate-slide-up border-2 border-gray-100 dark:border-gray-800">
+            <div className="sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center z-10">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white">{title}</h3>
+              <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full text-gray-500"><Icons.X className="w-6 h-6"/></button>
+            </div>
+            <div className="p-6">{children}</div>
+          </div>
+        </div>
+      );
+    };
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+      static getDerivedStateFromError(error) { return { hasError: true, error }; }
+      componentDidCatch(error, errorInfo) { console.error("Uncaught error:", error, errorInfo); }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="p-8 text-center flex flex-col items-center justify-center min-h-[50vh]">
+              <div className="w-20 h-20 rounded-3xl bg-red-100 text-brand-red flex items-center justify-center mb-6 animate-bounce"><Icons.CloudOff className="w-10 h-10"/></div>
+              <h2 className="text-2xl font-bold mb-2">Hoppla!</h2>
+              <p className="text-gray-500 mb-8 max-w-md mx-auto">Da ist etwas schiefgelaufen. Bitte lade die Seite neu.</p>
+              <Button onClick={() => window.location.reload()}>Neu laden</Button>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    /* ================= LOGIC HOOKS ================= */
+    function useFirebaseBridge(){
+      const [ready, setReady] = useState(false);
+      useEffect(() => {
+        if(window.__FIREBASE_BRIDGE_READY__) setReady(true);
+        const h = () => setReady(true);
+        window.addEventListener('firebase-bridge-ready', h);
+        return () => window.removeEventListener('firebase-bridge-ready', h);
+      }, []);
+      return ready ? window.FIREBASE_BRIDGE : null;
+    }
+
+    function useUserLocalStorage(userId, key, initial){
+      const storageKey = userId ? `${userId}:${key}` : null;
+      const [local, setLocal] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(storageKey)) || cloneValue(initial); } 
+        catch { return cloneValue(initial); }
+      });
+      const [status, setStatus] = useState("local");
+      const bridge = useFirebaseBridge();
+
+      useEffect(() => { if(storageKey) localStorage.setItem(storageKey, JSON.stringify(local)); }, [local, storageKey]);
+
+      useEffect(() => {
+        let unsubscribe = null;
+        if(!bridge || !userId || !storageKey) return;
+        setStatus("syncing");
+        
+        bridge.ensureAuthUser().then(() => {
+          const ref = bridge.doc(bridge.getFirestore(), FIRESTORE_PROGRESS_COLLECTION, userId);
+          unsubscribe = bridge.onSnapshot(ref, (snap) => {
+            if(snap.exists() && snap.data()[key] !== undefined) {
+               const remoteVal = snap.data()[key];
+               if(JSON.stringify(remoteVal) !== JSON.stringify(local)) setLocal(remoteVal); 
+               setStatus("synced");
+            } else {
+               bridge.setDoc(ref, { [key]: local }, { merge: true }).then(()=>setStatus("synced")).catch(() => setStatus("error"));
+            }
+          }, (err) => { console.warn("Sync Error", err); setStatus("error"); });
+        }).catch(() => setStatus("local"));
+
+        return () => { if(unsubscribe) unsubscribe(); };
+      }, [bridge, userId, key]);
+
+      const setWithSync = (valOrFn) => {
+        const newVal = valOrFn instanceof Function ? valOrFn(local) : valOrFn;
+        setLocal(newVal);
+        if(bridge && userId && status !== "error") {
+           setStatus("syncing");
+           bridge.ensureAuthUser().then(() => {
+             const ref = bridge.doc(bridge.getFirestore(), FIRESTORE_PROGRESS_COLLECTION, userId);
+             bridge.setDoc(ref, { [key]: newVal }, { merge: true }).then(() => setStatus("synced")).catch(() => setStatus("error"));
+           }).catch(() => setStatus("error"));
+        }
+      };
+      return [local, setWithSync, status];
+    }
+
+    function useUsers() {
+      const [users, setUsers] = useState(() => { 
+        try { 
+          const loaded = JSON.parse(localStorage.getItem('users'));
+          return Array.isArray(loaded) ? loaded.filter(Boolean) : []; 
+        } catch { return []; } 
+      });
+      const bridge = useFirebaseBridge();
+
+      useEffect(() => { localStorage.setItem('users', JSON.stringify(users)); }, [users]);
+
+      useEffect(() => {
+        let unsubscribe = null;
+        if(!bridge) return;
+        bridge.ensureAuthUser().then(() => {
+          unsubscribe = bridge.onSnapshot(bridge.collection(bridge.getFirestore(), FIRESTORE_USERS_COLLECTION), (snap) => {
+             const remote = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(u => u && u.username);
+             if(remote.length > 0) setUsers(remote); 
+          }, (err) => console.error("User Sync Error", err));
+        }).catch(err => console.error("User Auth Error", err));
+        return () => { if(unsubscribe) unsubscribe(); };
+      }, [bridge]);
+
+      const register = async (username, password) => {
+         const cleanName = (username||"").trim();
+         if(users.find(u => u.username.toLowerCase() === cleanName.toLowerCase())) throw new Error("Benutzername vergeben.");
+         const newUser = { id: generateId('user'), username: cleanName, passwordHash: hashPassword(password), joined: new Date().toISOString() };
+         setUsers(prev => [...prev, newUser]);
+         if(bridge) await bridge.setDoc(bridge.doc(bridge.getFirestore(), FIRESTORE_USERS_COLLECTION, newUser.id), newUser);
+         return newUser;
+      };
+      const login = async (username, password) => {
+         const u = users.find(u => u.username.toLowerCase() === (username||"").trim().toLowerCase());
+         if(!u) throw new Error("Benutzer nicht gefunden.");
+         if(u.passwordHash !== hashPassword(password)) throw new Error("Falsches Passwort.");
+         return u;
+      };
+      const updatePassword = async (userId, newPass) => {
+         setUsers(prev => prev.map(u => u.id === userId ? {...u, passwordHash: hashPassword(newPass)} : u));
+         if(bridge) await bridge.setDoc(bridge.doc(bridge.getFirestore(), FIRESTORE_USERS_COLLECTION, userId), { passwordHash: hashPassword(newPass) }, { merge: true });
+      };
+      return { users, login, register, updatePassword };
+    }
+
+    function useQuestions() {
+      const [questions, setQuestions] = useState(() => { 
+        try { 
+          const loaded = JSON.parse(localStorage.getItem('questions'));
+          return Array.isArray(loaded) ? loaded.filter(Boolean) : DEFAULT_QUESTIONS; 
+        } catch { return DEFAULT_QUESTIONS; } 
+      });
+      const bridge = useFirebaseBridge();
+      const [status, setStatus] = useState("local");
+
+      useEffect(() => { localStorage.setItem('questions', JSON.stringify(questions)); }, [questions]);
+
+      useEffect(() => {
+        let unsubscribe = null;
+        if(!bridge) return;
+        setStatus("syncing");
+        bridge.ensureAuthUser().then(() => {
+          unsubscribe = bridge.onSnapshot(bridge.collection(bridge.getFirestore(), FIRESTORE_COLLECTION), (snap) => {
+             const remote = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(q => !q.__deleted);
+             if(remote.length > 0) setQuestions(remote);
+             setStatus("synced");
+          }, () => setStatus("error"));
+        }).catch(() => setStatus("local"));
+        return () => { if(unsubscribe) unsubscribe(); };
+      }, [bridge]);
+
+      const save = async (q) => {
+        const isNew = !q.id || !questions.find(x => x.id === q.id);
+        const newQ = { ...q, id: q.id || generateId('q') };
+        setQuestions(prev => isNew ? [...prev, newQ] : prev.map(x => x.id === newQ.id ? newQ : x));
+        if(bridge && status !== "error") await bridge.setDoc(bridge.doc(bridge.getFirestore(), FIRESTORE_COLLECTION, newQ.id), newQ);
+      };
+      const remove = async (id) => {
+        setQuestions(prev => prev.filter(x => x.id !== id));
+        if(bridge && status !== "error") await bridge.setDoc(bridge.doc(bridge.getFirestore(), FIRESTORE_COLLECTION, id), { id, __deleted: true }, { merge: true });
+      };
+      return { questions, save, remove, status };
+    }
+
+    /* ================= FEATURE COMPONENTS ================= */
+    
+    // Auth
+    const AuthScreen = ({ onLogin, userManager }) => {
+      const [mode, setMode] = useState("login");
+      const [username, setUsername] = useState("");
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState("");
+      
+      const handleSubmit = async (e) => {
+        e.preventDefault(); setError("");
+        try {
+           if(mode === 'login') onLogin(await userManager.login(username, password));
+           else { if(password.length < 4) throw new Error("Passwort zu kurz (min 4)."); onLogin(await userManager.register(username, password)); }
+        } catch(err) { setError(err.message || String(err)); }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-6 bg-white dark:bg-gray-950">
+          <div className="w-full max-w-md">
+            <h1 className="text-3xl font-extrabold text-center mb-8 text-brand-blueDark dark:text-brand-blue">LernTool</h1>
+            <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-xl">
+               <div className="flex gap-4 mb-6">
+                 <button onClick={()=>setMode('login')} className={`flex-1 pb-2 text-sm font-bold border-b-4 transition-colors ${mode==='login' ? 'border-brand-blue text-brand-blue' : 'border-transparent text-gray-400'}`}>LOGIN</button>
+                 <button onClick={()=>setMode('register')} className={`flex-1 pb-2 text-sm font-bold border-b-4 transition-colors ${mode==='register' ? 'border-brand-blue text-brand-blue' : 'border-transparent text-gray-400'}`}>REGISTRIEREN</button>
+               </div>
+               
+               {error && <div className="mb-4 p-3 bg-red-100 text-red-600 text-sm font-bold rounded-xl flex items-center gap-2"><Icons.X className="w-4 h-4"/> {error}</div>}
+               
+               <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Nutzername</label>
+                    <input value={username} onChange={e=>setUsername(e.target.value)} className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:border-brand-blue focus:bg-white dark:focus:bg-gray-900 outline-none font-bold transition-all" required />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Passwort</label>
+                    <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:border-brand-blue focus:bg-white dark:focus:bg-gray-900 outline-none font-bold transition-all" required />
+                  </div>
+                  <Button fullWidth size="lg" type="submit" className="mt-4">{mode==='login' ? 'LOS GEHT\'S' : 'KONTO ERSTELLEN'}</Button>
+               </form>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Profile
+    const ProfileScreen = ({ user, userManager, onLogout }) => {
+       const [newPass, setNewPass] = useState("");
+       const [msg, setMsg] = useState("");
+       return (
+         <div className="animate-fade-in max-w-lg mx-auto pt-4 px-4 pb-24">
+            <h2 className="text-2xl font-extrabold mb-6">Profil</h2>
+            <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 rounded-3xl p-6 mb-6 flex items-center gap-4">
+               <div className="w-20 h-20 rounded-full bg-brand-blue text-white flex items-center justify-center text-3xl font-bold border-4 border-brand-blueDark">
+                 {user.username.charAt(0).toUpperCase()}
+               </div>
+               <div>
+                  <div className="text-xl font-bold">{user.username}</div>
+                  <div className="text-sm text-gray-500">Mitglied seit {user.joined ? new Date(user.joined).getFullYear() : '2025'}</div>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-6 border-2 border-gray-200 dark:border-gray-800 rounded-3xl bg-white dark:bg-gray-900">
+                 <h3 className="font-bold flex items-center gap-2 mb-4"><Icons.Lock className="w-5 h-5"/> Passwort ändern</h3>
+                 <div className="flex gap-2 flex-col sm:flex-row">
+                    <input type="password" placeholder="Neues Passwort" value={newPass} onChange={e=>setNewPass(e.target.value)} className="flex-1 p-3 rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-transparent focus:border-brand-blue outline-none font-medium" />
+                    <Button onClick={async ()=>{ if(newPass.length<4) return setMsg("Zu kurz!"); await userManager.updatePassword(user.id, newPass); setMsg("Gespeichert!"); setNewPass(""); }}>Update</Button>
+                 </div>
+                 {msg && <div className="text-sm font-bold text-brand-green mt-2">{msg}</div>}
+              </div>
+              
+              <Button onClick={onLogout} variant="danger" fullWidth className="mt-8">Abmelden</Button>
+            </div>
+         </div>
+       );
+    };
+
+    // Admin
+    const AdminPanel = ({ questions, qManager }) => {
+      const [search, setSearch] = useState("");
+      const [editQ, setEditQ] = useState(null);
+      const [isCreating, setIsCreating] = useState(false);
+
+      const filtered = questions.filter(q => 
+        (q.question || "").toLowerCase().includes((search||"").toLowerCase()) || 
+        (q.id || "").toLowerCase().includes((search||"").toLowerCase())
+      );
+
+      const QuestionForm = ({ initialData, onSave, onCancel }) => {
+        const [formData, setFormData] = useState({
+          id: '', question: '', choices: ['','','','',''], correct: [], tags: [], difficulty: 1, explain: '', law_ref: '', ...initialData
+        });
+
+        const updateChoice = (idx, val) => {
+           const newChoices = [...formData.choices]; newChoices[idx] = val;
+           setFormData({...formData, choices: newChoices});
+        };
+        const toggleCorrect = (idx) => {
+           const s = new Set(formData.correct); s.has(idx) ? s.delete(idx) : s.add(idx);
+           setFormData({...formData, correct: Array.from(s).sort()});
+        };
+
+        return (
+          <form onSubmit={(e)=>{e.preventDefault(); onSave(formData);}} className="space-y-4">
+             <div className="grid grid-cols-2 gap-4">
+               <div><label className="text-xs font-bold text-gray-500 uppercase">ID</label><input className="w-full p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-mono text-sm" value={formData.id} onChange={e=>setFormData({...formData, id: e.target.value})} /></div>
+               <div><label className="text-xs font-bold text-gray-500 uppercase">Level</label><select className="w-full p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: Number(e.target.value)})}>{[1,2,3,4,5].map(i=><option key={i} value={i}>Level {i}</option>)}</select></div>
+             </div>
+             <div><label className="text-xs font-bold text-gray-500 uppercase">Frage</label><textarea className="w-full p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold" rows="3" value={formData.question} onChange={e=>setFormData({...formData, question: e.target.value})} required/></div>
+             <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase">Antworten (Richtige anhaken)</label>
+                {formData.choices.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                     <div onClick={()=>toggleCorrect(i)} className={`w-8 h-8 rounded-lg border-2 cursor-pointer flex items-center justify-center transition-colors ${formData.correct.includes(i) ? 'bg-brand-green border-brand-greenDark text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                        {formData.correct.includes(i) && <Icons.Check className="w-5 h-5"/>}
+                     </div>
+                     <input className="flex-1 p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" value={c} onChange={e=>updateChoice(i, e.target.value)} placeholder={`Option ${i+1}`} required/>
+                  </div>
+                ))}
+             </div>
+             <div><label className="text-xs font-bold text-gray-500 uppercase">Tags</label><input className="w-full p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" value={formData.tags.join(', ')} onChange={e=>setFormData({...formData, tags: e.target.value.split(',').map(t=>t.trim()).filter(Boolean)})} /></div>
+             <div><label className="text-xs font-bold text-gray-500 uppercase">Erklärung</label><textarea className="w-full p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" rows="2" value={formData.explain} onChange={e=>setFormData({...formData, explain: e.target.value})} /></div>
+             <div className="flex justify-end gap-2 pt-4">
+                <Button variant="ghost" onClick={onCancel}>Abbrechen</Button>
+                <Button type="submit">Speichern</Button>
+             </div>
+          </form>
+        );
+      };
+
+      return (
+        <div className="space-y-6 pb-24 px-4 pt-4">
+          <div className="flex justify-between items-center">
+             <h2 className="text-2xl font-extrabold">Fragen ({questions.length})</h2>
+             <Button onClick={()=>setIsCreating(true)} size="sm" variant="success"><Icons.Plus className="w-5 h-5 mr-1"/> Neu</Button>
+          </div>
+          <input className="w-full p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-medium outline-none focus:border-brand-blue" placeholder="Fragen durchsuchen..." value={search} onChange={e=>setSearch(e.target.value)} />
+          <div className="space-y-3">
+             {filtered.map(q => (
+               <div key={q.id} className="bg-white dark:bg-gray-900 p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-800 shadow-sm flex justify-between items-start gap-4">
+                  <div>
+                     <div className="flex gap-2 mb-1"><span className="text-[10px] font-mono bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-500">{q.id}</span></div>
+                     <p className="font-bold text-sm line-clamp-2">{q.question}</p>
+                     <div className="flex gap-1 mt-2 flex-wrap">{q.tags.map(t=><span key={t} className="text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wide bg-gray-100 dark:bg-gray-800 text-gray-500">{t}</span>)}</div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                     <button onClick={()=>setEditQ(q)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><Icons.Edit className="w-5 h-5"/></button>
+                     <button onClick={()=>confirm("Löschen?") && qManager.remove(q.id)} className="p-2 rounded-xl text-gray-400 hover:bg-red-50 hover:text-brand-red"><Icons.Trash className="w-5 h-5"/></button>
+                  </div>
+               </div>
+             ))}
+          </div>
+          <Modal isOpen={!!editQ || isCreating} onClose={()=>{setEditQ(null); setIsCreating(false);}} title={isCreating ? "Neue Frage" : "Frage bearbeiten"}>
+             <QuestionForm initialData={editQ} onCancel={()=>{setEditQ(null); setIsCreating(false);}} onSave={(d)=>{qManager.save(d); setEditQ(null); setIsCreating(false);}} />
+          </Modal>
+        </div>
+      );
+    };
+
+    // --- Training ---
+    const QuestionCard = ({ q, onAnswer, showResult, userSelection, feedbackMode }) => {
+       const [localSel, setLocalSel] = useState([]);
+       
+       useEffect(() => { setLocalSel([]); }, [q.id]); // Reset on new question
+
+       const handleToggle = (idx) => {
+         if(feedbackMode) return; // Locked during feedback
+         setLocalSel(prev => prev.includes(idx) ? prev.filter(i=>i!==idx) : [...prev, idx]);
+       };
+
+       // determine styles for options
+       const getOptClass = (idx) => {
+         const base = "p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-3 relative overflow-hidden select-none btn-3d active:translate-y-1 active:border-b-0 ";
+         
+         // During selection (before check)
+         if(!feedbackMode) {
+            if(localSel.includes(idx)) return base + "border-brand-blue bg-blue-50 dark:bg-blue-900/20 text-brand-blueDark dark:text-brand-blue";
+            return base + "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800";
+         }
+         
+         // Feedback Mode (Result shown)
+         const isCorrect = q.correct.includes(idx);
+         const isSelected = userSelection.includes(idx);
+         
+         if(isCorrect) return base + "border-brand-green bg-green-50 dark:bg-green-900/20 text-brand-greenDark dark:text-brand-green";
+         if(isSelected && !isCorrect) return base + "border-brand-red bg-red-50 dark:bg-red-900/20 text-brand-redDark dark:text-brand-red opacity-100";
+         
+         return base + "border-gray-200 dark:border-gray-800 opacity-40";
+       };
+
+       return (
+         <div className="space-y-6 pb-32 animate-fade-in max-w-2xl mx-auto px-4">
+            <h2 className="text-xl md:text-2xl font-extrabold text-gray-800 dark:text-gray-100 leading-snug">{q.question}</h2>
+            
+            <div className="space-y-3">
+               {q.choices.map((text, i) => (
+                  <div key={i} onClick={()=>handleToggle(i)} className={getOptClass(i)}>
+                     <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors 
+                        ${feedbackMode && q.correct.includes(i) ? 'bg-brand-green border-brand-green text-white' : 
+                          feedbackMode && userSelection.includes(i) && !q.correct.includes(i) ? 'bg-brand-red border-brand-red text-white' :
+                          localSel.includes(i) ? 'bg-brand-blue border-brand-blue text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                        {(feedbackMode && q.correct.includes(i) || localSel.includes(i) || (feedbackMode && userSelection.includes(i))) && <Icons.Check className="w-4 h-4" />}
+                     </div>
+                     <span className="flex-1 font-bold text-base">{text}</span>
+                  </div>
+               ))}
+            </div>
+            
+            {!feedbackMode && (
+              <Button size="lg" fullWidth className="mt-8 shadow-xl" onClick={() => onAnswer(localSel)} disabled={localSel.length===0}>ÜBERPRÜFEN</Button>
+            )}
+         </div>
+       );
+    };
+
+    const FeedbackSheet = ({ isCorrect, explanation, law, onNext }) => {
+      const bg = isCorrect ? "bg-green-100 dark:bg-gray-900 border-t-2 border-brand-green" : "bg-red-100 dark:bg-gray-900 border-t-2 border-brand-red";
+      const text = isCorrect ? "text-brand-greenDark dark:text-brand-green" : "text-brand-redDark dark:text-brand-red";
+      const btnVariant = isCorrect ? "success" : "danger";
+      const title = isCorrect ? "Ausgezeichnet!" : "Nicht ganz richtig...";
+
+      return (
+        <div className={`fixed bottom-0 left-0 w-full z-50 p-6 animate-slide-up ${bg}`}>
+           <div className="max-w-2xl mx-auto flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                 <div className={`p-2 rounded-full ${isCorrect ? 'bg-white text-brand-green' : 'bg-white text-brand-red'}`}>
+                    {isCorrect ? <Icons.Check className="w-8 h-8"/> : <Icons.X className="w-8 h-8"/>}
+                 </div>
+                 <div className="flex-1">
+                    <h3 className={`text-xl font-extrabold ${text}`}>{title}</h3>
+                    <p className="mt-2 text-sm font-bold text-gray-700 dark:text-gray-300">{explanation || "Keine Erklärung verfügbar."}</p>
+                    {law && <p className="mt-1 text-xs font-mono text-gray-500">{law}</p>}
+                 </div>
+              </div>
+              <Button onClick={onNext} variant={btnVariant} size="lg" fullWidth>WEITER</Button>
+           </div>
+        </div>
+      );
+    };
+
+    const TrainingMode = ({ questions, userData, setUserData, onExit }) => {
+       const [queue, setQueue] = useState([]);
+       const [qIndex, setQIndex] = useState(0);
+       const [feedbackMode, setFeedbackMode] = useState(false);
+       const [isCorrect, setIsCorrect] = useState(false);
+       const [lastSelection, setLastSelection] = useState([]);
+
+       useEffect(() => {
+          if(!questions.length) return;
+          if(queue.length === 0) {
+             const tiers = (id) => (userData.tiers || {})[id] || 1;
+             const newQueue = weightedOrder(questions, tiers, "seed-"+Date.now());
+             setQueue(newQueue);
+             setQIndex(0);
+          }
+       }, [questions, queue.length, userData.tiers]);
+
+       const handleCheck = (selection) => {
+          const currentQ = queue[qIndex];
+          const correct = JSON.stringify(selection.sort()) === JSON.stringify(currentQ.correct.sort());
+          
+          setIsCorrect(correct);
+          setLastSelection(selection);
+          setFeedbackMode(true);
+          
+          // Update Stats immediately
+          const newTiers = { ...(userData.tiers || {}) };
+          const curTier = newTiers[currentQ.id] || 1;
+          newTiers[currentQ.id] = correct ? Math.min(5, curTier + 1) : Math.max(1, curTier - 1);
+          
+          setUserData(prev => ({
+             ...prev,
+             tiers: newTiers,
+             score: (prev.score||0) + (correct ? 10 : 0),
+             streak: correct ? (prev.streak||0) + 1 : 0,
+             answered: (prev.answered||0) + 1
+          }));
+       };
+
+       const handleNext = () => {
+          setFeedbackMode(false);
+          setLastSelection([]);
+          if(qIndex < queue.length - 1) setQIndex(i => i + 1);
+          else setQueue([]); // trigger regen
+       };
+
+       if(!queue.length) return <div className="p-8 text-center text-gray-500 font-bold animate-pulse">Lade Trainingsplan...</div>;
+
+       const currentQ = queue[qIndex];
+       
+       return (
+         <div className="h-full flex flex-col">
+            <div className="sticky top-0 bg-white/90 dark:bg-gray-950/90 backdrop-blur z-20 px-4 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-4">
+               <button onClick={onExit} className="text-gray-400 hover:text-gray-600"><Icons.X className="w-6 h-6"/></button>
+               <ProgressBar current={qIndex} total={queue.length} />
+               <div className="flex items-center gap-1 text-brand-red font-extrabold animate-pop">
+                  <Icons.Flame className="w-5 h-5 fill-current"/> {userData.streak || 0}
+               </div>
+            </div>
+
+            <div className="flex-1 py-4">
+              <QuestionCard 
+                key={currentQ.id} 
+                q={currentQ} 
+                onAnswer={handleCheck} 
+                showResult={feedbackMode} 
+                userSelection={lastSelection} 
+                feedbackMode={feedbackMode}
+              />
+            </div>
+
+            {feedbackMode && (
+              <FeedbackSheet 
+                isCorrect={isCorrect} 
+                explanation={currentQ.explain} 
+                law={currentQ.law_ref} 
+                onNext={handleNext} 
+              />
+            )}
+         </div>
+       );
+    };
+
+    const Dashboard = ({ userData, questions, onStartTrain }) => {
+       const tiers = Object.values(userData.tiers || {});
+       const learned = tiers.filter(t => t > 3).length;
+       const progress = Math.round((learned / (questions.length || 1)) * 100);
+       
+       return (
+         <div className="space-y-6 pb-24 px-4 pt-4">
+            <h2 className="text-2xl font-extrabold mb-4">Übersicht</h2>
+            
+            <div className="grid grid-cols-2 gap-4">
+               <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 p-4 rounded-2xl flex flex-col items-center justify-center text-center shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+                  <div className="text-brand-yellow mb-1"><Icons.Flag className="w-8 h-8"/></div>
+                  <div className="text-2xl font-black">{userData.score || 0}</div>
+                  <div className="text-xs font-bold text-gray-400 uppercase">XP Gesamt</div>
+               </div>
+               <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 p-4 rounded-2xl flex flex-col items-center justify-center text-center shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
+                  <div className="text-brand-red mb-1"><Icons.Flame className="w-8 h-8"/></div>
+                  <div className="text-2xl font-black">{userData.streak || 0}</div>
+                  <div className="text-xs font-bold text-gray-400 uppercase">Tage Streak</div>
+               </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm">
+               <h3 className="font-extrabold text-lg mb-4">Dein Lernpfad</h3>
+               <div className="h-6 bg-gray-100 dark:bg-gray-800 rounded-full w-full overflow-hidden border border-black/5 dark:border-white/5 relative">
+                  <div className="absolute top-1.5 left-2 right-2 h-2 bg-white/10 rounded-full z-10"></div>
+                  <div className="h-full bg-brand-yellow border-b-4 border-brand-yellowDark transition-all duration-1000" style={{width: `${Math.max(5, progress)}%`}}></div>
+               </div>
+               <p className="text-sm font-bold text-gray-400 mt-3 text-center">{learned} von {questions.length} Fragen gemeistert</p>
+            </div>
+
+            <Button size="lg" fullWidth onClick={onStartTrain} className="py-5 text-xl shadow-xl">JETZT LERNEN</Button>
+            
+            <h3 className="font-extrabold text-lg pt-4">Kategorien</h3>
+            <div className="grid gap-3">
+               {["BDG", "SPG", "StPO", "Verwaltung"].map((cat, i) => (
+                  <div key={cat} className="p-4 rounded-2xl bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-800 flex items-center gap-4 active:scale-95 transition-transform cursor-pointer" onClick={onStartTrain}>
+                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm
+                        ${i===0?'bg-orange-400':i===1?'bg-blue-400':i===2?'bg-rose-400':'bg-emerald-400'}`}>
+                        {cat.charAt(0)}
+                     </div>
+                     <div className="flex-1">
+                        <div className="font-bold text-gray-800 dark:text-gray-100">{cat}</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Training starten</div>
+                     </div>
+                     <Icons.ChevronRight className="text-gray-300"/>
+                  </div>
+               ))}
+            </div>
+         </div>
+       );
+    };
+
+    /* ================= MAIN APP LAYOUT ================= */
+    const App = () => {
+       const userManager = useUsers();
+       const [activeUser, setActiveUser] = useUserLocalStorage("app", "activeUser", null);
+       const [view, setView] = useState("dashboard"); // dashboard, train, admin, profile
+       const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme")==="dark");
+
+       const { questions, save, remove, status: qStatus } = useQuestions();
+       const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 });
+
+       useEffect(() => {
+         if(darkMode) document.documentElement.classList.add("dark");
+         else document.documentElement.classList.remove("dark");
+         localStorage.setItem("theme", darkMode ? "dark" : "light");
+       }, [darkMode]);
+
+       if(!activeUser) return <ErrorBoundary><AuthScreen userManager={userManager} onLogin={setActiveUser} /></ErrorBoundary>;
+
+       // In Training Mode, hide default layout
+       if(view === 'train') {
+         return (
+           <ErrorBoundary>
+             <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+               <TrainingMode questions={questions} userData={userData} setUserData={setUserData} onExit={()=>setView('dashboard')} />
+             </div>
+           </ErrorBoundary>
+         );
+       }
+
+       const NavBtn = ({ id, icon: Icon, label }) => (
+         <button onClick={()=>setView(id)} className={`flex flex-col items-center justify-center w-full h-full active:scale-90 transition-transform ${view===id ? 'text-brand-blue' : 'text-gray-400 hover:text-gray-500'}`}>
+            <Icon className="w-7 h-7 mb-1" strokeWidth={view===id ? 3 : 2.5} />
+         </button>
+       );
+
+       return (
+         <ErrorBoundary>
+           <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
+             {/* Header */}
+             <header className="sticky top-0 z-40 bg-white/90 dark:bg-gray-950/90 backdrop-blur border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                   <div className="w-8 h-8 rounded-lg bg-brand-blue text-white flex items-center justify-center font-bold text-sm">
+                     {activeUser.username.charAt(0).toUpperCase()}
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-xs font-extrabold text-gray-400 uppercase leading-none">LernTool</span>
+                     <span className="text-sm font-bold leading-none">{activeUser.username}</span>
+                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <SyncStatus status={pStatus} type="Profil" />
+                  <button onClick={()=>setDarkMode(!darkMode)} className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-lg border-b-2 border-gray-200 dark:border-gray-700 active:border-b-0 active:translate-y-[2px]">{darkMode ? '🌙' : '☀️'}</button>
+                </div>
+             </header>
+
+             {/* Content */}
+             <main className="flex-1 max-w-2xl mx-auto w-full animate-fade-in">
+                {view === 'dashboard' && <Dashboard userData={userData} questions={questions} onStartTrain={()=>setView('train')} />}
+                {view === 'admin' && <AdminPanel questions={questions} qManager={{save, remove}} />}
+                {view === 'profile' && <ProfileScreen user={activeUser} userManager={userManager} onLogout={()=>setActiveUser(null)} />}
+             </main>
+
+             {/* Bottom Nav */}
+             <nav className="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-900 border-t-2 border-gray-200 dark:border-gray-800 h-20 px-2 z-40 flex justify-around items-center safe-area-pb">
+                <NavBtn id="dashboard" icon={Icons.Dashboard} label="Home" />
+                <NavBtn id="admin" icon={Icons.Admin} label="Admin" />
+                <NavBtn id="profile" icon={Icons.User} label="Profil" />
+             </nav>
+           </div>
+         </ErrorBoundary>
+       );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

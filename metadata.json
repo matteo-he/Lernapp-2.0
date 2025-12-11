@@ -1,0 +1,5 @@
+{
+  "name": "Lerntool E1/E2a (Refactored)",
+  "description": "Modernes Lern-Tool mit Spaced Repetition, Offline-First Ansatz und Firebase Sync.",
+  "requestFramePermissions": []
+}
