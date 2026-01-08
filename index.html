@@ -512,6 +512,23 @@
           { name: "Verfassung", color: "from-cyan-400 to-blue-600" },
           { name: "Verwaltung", color: "from-emerald-400 to-teal-500" }
        ];
+
+       const getCategoryStats = (catName) => {
+          const catQuestions = questions.filter(q => q.tags?.some(t => t.toLowerCase() === catName.toLowerCase()));
+          const countTotal = catQuestions.length;
+          if (countTotal === 0) return { mastered: 0, working: 0, new: 0, progress: 0 };
+          
+          const countMastered = catQuestions.filter(q => (tiers[q.id] || 1) >= 4).length;
+          const countWorking = catQuestions.filter(q => (tiers[q.id] || 1) > 1 && (tiers[q.id] || 1) < 4).length;
+          const countNew = Math.max(0, countTotal - countMastered - countWorking);
+          
+          return {
+             mastered: countMastered,
+             working: countWorking,
+             new: countNew,
+             progress: Math.round((countMastered / countTotal) * 100)
+          };
+       };
        
        return (
          <div className="px-6 py-8 space-y-8 pb-32 animate-fade-in">
@@ -574,15 +591,41 @@
             <div className="space-y-4">
                <h3 className="font-bold text-lg text-slate-800 dark:text-white">Kategorien</h3>
                <div className="grid gap-3">
-                  {categories.map((cat) => (
-                     <button key={cat.name} onClick={() => onStartTrain(cat.name)} className="group bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark flex items-center gap-4 transition-all hover:border-primary active:scale-98 text-left">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md bg-gradient-to-br ${cat.color}`}>
-                           {cat.name.charAt(0)}
-                        </div>
-                        <div className="flex-1 font-bold text-slate-700 dark:text-slate-200">{cat.name}</div>
-                        <div className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold uppercase tracking-wider">Starten &rarr;</div>
-                     </button>
-                  ))}
+                  {categories.map((cat) => {
+                     const stats = getCategoryStats(cat.name);
+                     return (
+                        <button key={cat.name} onClick={() => onStartTrain(cat.name)} className="group bg-surface-light dark:bg-surface-dark p-4 rounded-[1.5rem] border border-border-light dark:border-border-dark flex flex-col gap-3 transition-all hover:border-primary active:scale-98 text-left shadow-sm">
+                           <div className="flex items-center gap-4 w-full">
+                              <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-md bg-gradient-to-br ${cat.color}`}>
+                                 {cat.name.charAt(0)}
+                              </div>
+                              <div className="flex-1">
+                                 <div className="flex justify-between items-center">
+                                    <div className="font-bold text-slate-700 dark:text-slate-200">{cat.name}</div>
+                                    <div className="text-[10px] font-black text-primary dark:text-primary-light bg-primary/10 px-2 py-0.5 rounded-full">{stats.progress}%</div>
+                                 </div>
+                              </div>
+                              <Icons.ArrowRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
+                           </div>
+                           
+                           {/* Sub-stats for category */}
+                           <div className="grid grid-cols-3 gap-2 w-full pt-1">
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
+                                 <span className="text-[10px] font-bold text-danger/80">{stats.new} neu</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-warning"></div>
+                                 <span className="text-[10px] font-bold text-warning/80">{stats.working} wip</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
+                                 <span className="text-[10px] font-bold text-success/80">{stats.mastered} ok</span>
+                              </div>
+                           </div>
+                        </button>
+                     );
+                  })}
                </div>
             </div>
          </div>
