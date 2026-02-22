@@ -146,6 +146,19 @@
     function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
     function weightedOrder(items, tierResolver, seedStr){ const seed = xmur3(seedStr)(); const rng = mulberry32(seed); return [...items].map(x => ({ x, k: (rng() || Number.EPSILON) ** (1 / ({1:5,2:3,3:2,4:1.2,5:1}[tierResolver(x.id)]||1)) })).sort((a,b) => b.k - a.k).map(o => o.x); }
 
+    // Shared scoring: +1 correct eval, -1 incorrect eval, 0 skipped, floor 0 per question
+    function scoreQuestion(q, marks) {
+       let points = 0;
+       for(let ci = 0; ci < (q.choices || []).length; ci++) {
+          const isCorrectChoice = (q.correct || []).includes(ci);
+          const userMark = (marks || {})[ci] || null;
+          if(userMark === null) { /* 0 */ }
+          else if(userMark === 'true') { points += isCorrectChoice ? 1 : -1; }
+          else if(userMark === 'false') { points += isCorrectChoice ? -1 : 1; }
+       }
+       return Math.max(0, points);
+    }
+
     /* ================= HOOKS ================= */
     function useUserLocalStorage(userId, key, initial){
       const storageKey = userId ? `${userId}:${key}` : null;
@@ -252,18 +265,18 @@
     function useLearningHistory(userId) {
        const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", []);
 
-       const recordSession = useCallback((questionsAnswered, correctCount, wrongCount) => {
+       const recordSession = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
           const today = todayKey();
           setHistory(prev => {
              const arr = [...(prev || [])];
              const todayEntry = arr.find(e => e.date === today);
              if(todayEntry) {
                 todayEntry.questionsAnswered += questionsAnswered;
-                todayEntry.correct += correctCount;
-                todayEntry.wrong += wrongCount;
+                todayEntry.totalPoints = (todayEntry.totalPoints || 0) + totalPoints;
+                todayEntry.totalMaxPoints = (todayEntry.totalMaxPoints || 0) + totalMaxPoints;
                 todayEntry.sessions += 1;
              } else {
-                arr.push({ date: today, questionsAnswered, correct: correctCount, wrong: wrongCount, sessions: 1 });
+                arr.push({ date: today, questionsAnswered, totalPoints, totalMaxPoints, sessions: 1 });
              }
              return arr.slice(-90); // Keep 90 days
           });
@@ -462,57 +475,58 @@
        );
     };
 
-    // --- Training ---
+    // --- Training (True/False with point scoring) ---
     const TrainingMode = ({ questions, userData, setUserData, onExit, filterTag }) => {
        const [queue, setQueue] = useState([]);
        const [qIndex, setQIndex] = useState(0);
        const [feedbackMode, setFeedbackMode] = useState(false);
-       const [isCorrect, setIsCorrect] = useState(false);
-       const [lastSelection, setLastSelection] = useState([]);
+       const [currentMarks, setCurrentMarks] = useState({}); // { choiceIndex: 'true'|'false'|null }
+       const [lastPoints, setLastPoints] = useState(0);
        const [loading, setLoading] = useState(true);
-       const sessionStatsRef = useRef({ correct: 0, wrong: 0 });
-       const exitWithStats = () => onExit(sessionStatsRef.current.correct, sessionStatsRef.current.wrong);
+       const sessionStatsRef = useRef({ totalPoints: 0, totalMaxPoints: 0, questionsAnswered: 0 });
+       const exitWithStats = () => onExit(sessionStatsRef.current.totalPoints, sessionStatsRef.current.totalMaxPoints, sessionStatsRef.current.questionsAnswered);
 
        useEffect(() => {
           if(!questions || queue.length > 0) return;
           setLoading(true);
           let pool = questions;
-          
-          // Smart filtering
           if(filterTag) {
             if(typeof filterTag === 'string') {
-               // Tag only
                pool = pool.filter(q => q.tags && q.tags.some(t => t.toLowerCase() === filterTag.toLowerCase()));
             } else if (typeof filterTag === 'object') {
-               // Advanced filtering (status)
                const getTier = (id) => (userData.tiers||{})[id] || 1;
                if(filterTag.status === 'new') pool = pool.filter(q => getTier(q.id) === 1);
                if(filterTag.status === 'wip') pool = pool.filter(q => getTier(q.id) > 1 && getTier(q.id) < 4);
                if(filterTag.status === 'mastered') pool = pool.filter(q => getTier(q.id) >= 4);
             }
           }
-
           const tiers = (id) => (userData.tiers || {})[id] || 1;
           const newQueue = weightedOrder(pool, tiers, "seed-"+Date.now());
           setQueue(newQueue); setQIndex(0); setLoading(false);
        }, [questions, filterTag, userData.tiers]);
 
-       const handleCheck = (selection) => {
+       const handleCheck = () => {
           const currentQ = queue[qIndex];
-          const correct = JSON.stringify(selection.sort()) === JSON.stringify(currentQ.correct.sort());
-          setIsCorrect(correct); setLastSelection(selection); setFeedbackMode(true);
-          if(correct) sessionStatsRef.current.correct++; else sessionStatsRef.current.wrong++;
+          const points = scoreQuestion(currentQ, currentMarks);
+          const maxPoints = (currentQ.choices || []).length;
+          setLastPoints(points);
+          setFeedbackMode(true);
+          sessionStatsRef.current.totalPoints += points;
+          sessionStatsRef.current.totalMaxPoints += maxPoints;
+          sessionStatsRef.current.questionsAnswered += 1;
+          // Update tiers: 5/5 → tier up, 0 → tier down, else stay
           const newTiers = { ...(userData.tiers || {}) }; const curTier = newTiers[currentQ.id] || 1;
-          newTiers[currentQ.id] = correct ? Math.min(5, curTier + 1) : Math.max(1, curTier - 1);
-          setUserData(prev => ({ ...prev, tiers: newTiers, score: (prev.score||0) + (correct ? 10 : 0), streak: correct ? (prev.streak||0) + 1 : 0 }));
+          if(points >= 4) newTiers[currentQ.id] = Math.min(5, curTier + 1);
+          else if(points <= 1) newTiers[currentQ.id] = Math.max(1, curTier - 1);
+          setUserData(prev => ({ ...prev, tiers: newTiers, score: (prev.score||0) + points * 2 }));
        };
-       const handleNext = () => { setFeedbackMode(false); setLastSelection([]); if(qIndex < queue.length - 1) setQIndex(i => i + 1); else setQueue([]); };
+       const handleNext = () => { setFeedbackMode(false); setCurrentMarks({}); if(qIndex < queue.length - 1) setQIndex(i => i + 1); else setQueue([]); };
+       const hasAnyMark = Object.values(currentMarks).some(v => v !== null && v !== undefined);
 
        if(loading) return <div className="min-h-screen flex items-center justify-center text-primary font-bold animate-pulse">Lade Training...</div>;
        if(!queue.length) return <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center space-y-6"><div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center"><Icons.Check className="w-12 h-12 text-slate-400"/></div><h2 className="text-xl font-bold dark:text-white">Alles erledigt!</h2><p className="text-slate-500">Für heute gibt es keine Fragen mehr in dieser Kategorie.</p><Button onClick={exitWithStats}>Zurück</Button></div>;
 
        const currentQ = queue[qIndex];
-       const toggleSel = (i) => !feedbackMode && setLastSelection(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
 
        return (
          <div className="h-screen flex flex-col bg-bg-light dark:bg-bg-dark relative overflow-hidden">
@@ -523,31 +537,57 @@
             </div>
 
             {/* Question Card */}
-            <div className="flex-1 overflow-y-auto px-6 pb-40">
-               <div className="max-w-xl mx-auto space-y-8 py-4 animate-slide-up">
+            <div className="flex-1 overflow-y-auto px-6 pb-44">
+               <div className="max-w-xl mx-auto space-y-6 py-4 animate-slide-up">
                   <div className="space-y-2">
                      <span className="text-xs font-bold uppercase tracking-wider text-primary dark:text-primary-light/80">Level {(userData.tiers||{})[currentQ.id] || 1}</span>
-                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
+                     <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
+                     {!feedbackMode && <p className="text-[10px] font-bold text-slate-400 uppercase">Bewerte jede Aussage als Richtig oder Falsch:</p>}
                   </div>
-                  
+
                   <div className="space-y-3">
-                     {currentQ.choices.map((txt, i) => {
-                        const sel = lastSelection.includes(i);
-                        const isCorr = currentQ.correct.includes(i);
-                        let stateStyle = "border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark text-slate-700 dark:text-slate-200";
+                     {(currentQ.choices || []).map((txt, ci) => {
+                        const mark = currentMarks[ci] || null;
+                        const isCorrectChoice = (currentQ.correct || []).includes(ci);
+
                         if(feedbackMode) {
-                           if(isCorr) stateStyle = "border-success bg-success/10 text-success-dark dark:text-success-light";
-                           else if(sel) stateStyle = "border-danger bg-danger/10 text-danger-dark dark:text-danger-light";
-                           else stateStyle = "opacity-50 border-transparent";
-                        } else if(sel) {
-                           stateStyle = "border-primary bg-primary/5 text-primary-dark dark:text-primary-light shadow-[0_0_0_1px_rgba(99,102,241,1)]";
-                        }
-                        return (
-                           <div key={i} onClick={()=>toggleSel(i)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200 flex items-start gap-4 ${stateStyle} ${!feedbackMode && 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                              <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 ${sel || (feedbackMode && isCorr) ? 'border-current bg-current' : 'border-slate-300 dark:border-slate-600'}`}>
-                                 {(sel || (feedbackMode && isCorr)) && <Icons.Check className="w-4 h-4 text-white" strokeWidth={4} />}
+                           let pointResult = 0;
+                           if(mark === 'true') pointResult = isCorrectChoice ? 1 : -1;
+                           else if(mark === 'false') pointResult = isCorrectChoice ? -1 : 1;
+                           const bgColor = pointResult === 1 ? 'border-success bg-success/10' : pointResult === -1 ? 'border-danger bg-danger/10' : 'border-border-light dark:border-border-dark bg-slate-50 dark:bg-slate-800/50';
+                           return (
+                              <div key={ci} className={`p-3 rounded-2xl border-2 transition-all ${bgColor}`}>
+                                 <div className="flex items-start gap-3">
+                                    <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-mono font-bold text-white mt-0.5 ${pointResult === 1 ? 'bg-success' : pointResult === -1 ? 'bg-danger' : 'bg-slate-400'}`}>
+                                       {pointResult === 1 ? '+1' : pointResult === -1 ? '-1' : ' 0'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                       <span className="font-medium text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{txt}</span>
+                                       <div className="flex gap-3 mt-1 text-[10px] font-bold">
+                                          <span className={isCorrectChoice ? 'text-success' : 'text-danger'}>{isCorrectChoice ? 'Wahr' : 'Falsch'}</span>
+                                          <span className="text-slate-400">Deine Bewertung: {mark === 'true' ? 'Richtig' : mark === 'false' ? 'Falsch' : 'Keine'}</span>
+                                       </div>
+                                    </div>
+                                 </div>
                               </div>
-                              <span className="font-medium text-base leading-relaxed">{txt}</span>
+                           );
+                        }
+
+                        return (
+                           <div key={ci} className={`p-3 rounded-2xl border-2 transition-all duration-200 ${mark === 'true' ? 'border-success bg-success/5' : mark === 'false' ? 'border-danger bg-danger/5' : 'border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark'}`}>
+                              <div className="flex items-start gap-3">
+                                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1 leading-relaxed pt-1">{txt}</span>
+                                 <div className="flex gap-1 flex-shrink-0">
+                                    <button onClick={() => setCurrentMarks(prev => ({ ...prev, [ci]: prev[ci] === 'true' ? null : 'true' }))}
+                                       className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${mark === 'true' ? 'bg-success text-white shadow-md shadow-success/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-success/20 hover:text-success'}`}>
+                                       <Icons.Check className="w-5 h-5" strokeWidth={3} />
+                                    </button>
+                                    <button onClick={() => setCurrentMarks(prev => ({ ...prev, [ci]: prev[ci] === 'false' ? null : 'false' }))}
+                                       className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${mark === 'false' ? 'bg-danger text-white shadow-md shadow-danger/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-danger/20 hover:text-danger'}`}>
+                                       <Icons.X className="w-5 h-5" strokeWidth={3} />
+                                    </button>
+                                 </div>
+                              </div>
                            </div>
                         );
                      })}
@@ -559,17 +599,24 @@
             <div className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-bg-light dark:from-bg-dark via-bg-light dark:via-bg-dark to-transparent safe-pb">
                <div className="max-w-xl mx-auto">
                   {!feedbackMode ? (
-                     <Button size="lg" fullWidth onClick={()=>handleCheck(lastSelection)} disabled={!lastSelection.length} className="shadow-xl">Bestätigen</Button>
+                     <Button size="lg" fullWidth onClick={handleCheck} disabled={!hasAnyMark} className="shadow-xl">Bestätigen</Button>
                   ) : (
-                     <div className={`p-5 rounded-3xl animate-scale-in border ${isCorrect ? 'bg-success/10 border-success/20' : 'bg-danger/10 border-danger/20'} glass`}>
+                     <div className={`p-5 rounded-3xl animate-scale-in border ${lastPoints >= 4 ? 'bg-success/10 border-success/20' : lastPoints >= 2 ? 'bg-warning/10 border-warning/20' : 'bg-danger/10 border-danger/20'} glass`}>
                         <div className="flex justify-between items-start mb-4">
                            <div>
-                              <div className={`text-xl font-black ${isCorrect ? 'text-success' : 'text-danger'}`}>{isCorrect ? 'Stark!' : 'Knapp daneben'}</div>
-                              {currentQ.explain && <p className="text-sm mt-1 text-slate-600 dark:text-slate-300 font-medium">{currentQ.explain}</p>}
+                              <div className="flex items-center gap-3">
+                                 <div className={`text-xl font-black ${lastPoints >= 4 ? 'text-success' : lastPoints >= 2 ? 'text-warning' : 'text-danger'}`}>
+                                    {lastPoints >= 4 ? 'Stark!' : lastPoints >= 2 ? 'Solide' : 'Knapp daneben'}
+                                 </div>
+                                 <div className={`px-3 py-1 rounded-full font-black text-sm ${lastPoints >= 4 ? 'bg-success/20 text-success' : lastPoints >= 2 ? 'bg-warning/20 text-warning' : 'bg-danger/20 text-danger'}`}>
+                                    {lastPoints}/5 Punkte
+                                 </div>
+                              </div>
+                              {currentQ.explain && <p className="text-sm mt-2 text-slate-600 dark:text-slate-300 font-medium">{currentQ.explain}</p>}
                               {currentQ.law_ref && <p className="text-xs mt-2 font-mono text-slate-400 bg-white/50 dark:bg-black/20 inline-block px-1.5 py-0.5 rounded">{currentQ.law_ref}</p>}
                            </div>
                         </div>
-                        <Button onClick={handleNext} variant={isCorrect ? 'success' : 'danger'} fullWidth>Weiter</Button>
+                        <Button onClick={handleNext} variant={lastPoints >= 4 ? 'success' : lastPoints >= 2 ? 'primary' : 'danger'} fullWidth>Weiter</Button>
                      </div>
                   )}
                </div>
@@ -958,23 +1005,6 @@
           const finalAnswers = { ...answers, [qIndex]: { ...currentMarks } };
           setAnswers(finalAnswers);
           setPhase('review');
-       };
-
-       // Scoring logic
-       const scoreQuestion = (q, marks) => {
-          let points = 0;
-          for(let ci = 0; ci < (q.choices || []).length; ci++) {
-             const isCorrectChoice = (q.correct || []).includes(ci);
-             const userMark = (marks || {})[ci] || null;
-             if(userMark === null) {
-                // Not evaluated → 0
-             } else if(userMark === 'true') {
-                points += isCorrectChoice ? 1 : -1;
-             } else if(userMark === 'false') {
-                points += isCorrectChoice ? -1 : 1;
-             }
-          }
-          return Math.max(0, points); // Floor at 0
        };
 
        const getResults = () => {
@@ -1426,15 +1456,20 @@
              const key = d.toISOString().slice(0, 10);
              const entry = (history || []).find(e => e.date === key);
              const dayLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
-             result.push({ date: key, dayLabel, questionsAnswered: entry?.questionsAnswered || 0, correct: entry?.correct || 0, wrong: entry?.wrong || 0 });
+             const tp = entry?.totalPoints || entry?.correct || 0;
+             const mp = entry?.totalMaxPoints || (entry?.questionsAnswered ? entry.questionsAnswered * 5 : 0);
+             const avgPts = entry?.questionsAnswered > 0 ? (tp / entry.questionsAnswered).toFixed(1) : null;
+             result.push({ date: key, dayLabel, questionsAnswered: entry?.questionsAnswered || 0, totalPoints: tp, totalMaxPoints: mp, avgPoints: avgPts });
           }
           return result;
        }, [history]);
 
        const maxQuestions = Math.max(...last7.map(d => d.questionsAnswered), 1);
        const totalAnswered = (history || []).reduce((s, e) => s + e.questionsAnswered, 0);
-       const totalCorrect = (history || []).reduce((s, e) => s + e.correct, 0);
-       const totalAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+       const totalPoints = (history || []).reduce((s, e) => s + (e.totalPoints || e.correct || 0), 0);
+       const totalMaxPoints = (history || []).reduce((s, e) => s + (e.totalMaxPoints || (e.questionsAnswered ? e.questionsAnswered * 5 : 0)), 0);
+       const overallAvg = totalAnswered > 0 ? (totalPoints / totalAnswered).toFixed(1) : '0.0';
+       const overallPct = totalMaxPoints > 0 ? Math.round((totalPoints / totalMaxPoints) * 100) : 0;
 
        // Streak calendar (last 28 days)
        const last28 = useMemo(() => {
@@ -1483,20 +1518,21 @@
                 </div>
              </div>
 
-             {/* Weekly Chart */}
+             {/* Weekly Chart with avg points */}
              <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-[2rem] border border-border-light dark:border-border-dark space-y-4">
                 <div className="flex items-center gap-2">
                    <Icons.BarChart className="w-5 h-5 text-primary" />
                    <h3 className="font-bold dark:text-white">Letzte 7 Tage</h3>
                 </div>
-                <div className="flex items-end gap-2 h-32">
+                <div className="flex items-end gap-2 h-36">
                    {last7.map((d, i) => (
                       <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                         <div className="w-full flex flex-col items-center justify-end h-24">
-                            {d.questionsAnswered > 0 && <span className="text-[10px] font-bold text-primary mb-1">{d.questionsAnswered}</span>}
+                         <div className="w-full flex flex-col items-center justify-end h-28">
+                            {d.avgPoints !== null && <span className={`text-[10px] font-black mb-0.5 ${parseFloat(d.avgPoints) >= 4 ? 'text-success' : parseFloat(d.avgPoints) >= 2 ? 'text-warning' : 'text-danger'}`}>{d.avgPoints}</span>}
+                            {d.questionsAnswered > 0 && <span className="text-[9px] text-slate-400 mb-0.5">{d.questionsAnswered}F</span>}
                             <div className="w-full rounded-t-lg transition-all duration-500" style={{
                                height: `${Math.max(4, (d.questionsAnswered / maxQuestions) * 100)}%`,
-                               background: d.questionsAnswered > 0 ? 'linear-gradient(to top, #6366F1, #818CF8)' : '#E2E8F0',
+                               background: d.questionsAnswered > 0 ? (d.avgPoints !== null && parseFloat(d.avgPoints) >= 3 ? 'linear-gradient(to top, #22C55E, #4ADE80)' : 'linear-gradient(to top, #6366F1, #818CF8)') : '#E2E8F0',
                                minHeight: '4px'
                             }}></div>
                          </div>
@@ -1504,24 +1540,26 @@
                       </div>
                    ))}
                 </div>
+                <div className="text-[10px] text-slate-400 text-center">Zahl über Balken = Durchschnittspunkte pro Frage (max. 5)</div>
              </div>
 
              {/* Summary Cards */}
              <div className="grid grid-cols-2 gap-3">
                 <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
                    <div className="flex items-center gap-2 mb-2">
-                      <Icons.TrendingUp className="w-4 h-4 text-success" />
-                      <span className="text-xs font-bold text-slate-400 uppercase">Genauigkeit</span>
+                      <Icons.Target className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Durchschnitt</span>
                    </div>
-                   <div className="text-2xl font-black text-slate-800 dark:text-white">{totalAccuracy}%</div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{overallAvg}<span className="text-sm font-medium text-slate-400">/5</span></div>
+                   <div className="text-xs text-slate-400">Punkte pro Frage</div>
                 </div>
                 <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
                    <div className="flex items-center gap-2 mb-2">
-                      <Icons.Book className="w-4 h-4 text-primary" />
-                      <span className="text-xs font-bold text-slate-400 uppercase">Gesamt</span>
+                      <Icons.TrendingUp className="w-4 h-4 text-success" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Punkterate</span>
                    </div>
-                   <div className="text-2xl font-black text-slate-800 dark:text-white">{totalAnswered}</div>
-                   <div className="text-xs text-slate-400">Fragen beantwortet</div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{overallPct}%</div>
+                   <div className="text-xs text-slate-400">{totalPoints} / {totalMaxPoints} Punkte</div>
                 </div>
                 <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
                    <div className="flex items-center gap-2 mb-2">
@@ -1544,20 +1582,25 @@
                 <div className="space-y-3">
                    <h3 className="font-bold text-lg dark:text-white">Verlauf</h3>
                    {[...(history || [])].reverse().slice(0, 14).map((entry, i) => {
-                      const acc = entry.questionsAnswered > 0 ? Math.round((entry.correct / entry.questionsAnswered) * 100) : 0;
+                      const tp = entry.totalPoints || entry.correct || 0;
+                      const mp = entry.totalMaxPoints || (entry.questionsAnswered ? entry.questionsAnswered * 5 : 0);
+                      const avg = entry.questionsAnswered > 0 ? (tp / entry.questionsAnswered).toFixed(1) : '0.0';
+                      const pct = mp > 0 ? Math.round((tp / mp) * 100) : 0;
                       const dateObj = new Date(entry.date + 'T00:00:00');
                       const dateStr = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
                       return (
                          <div key={i} className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white ${acc >= 80 ? 'bg-success' : acc >= 50 ? 'bg-warning' : 'bg-danger'}`}>
-                               {acc}%
+                            <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center text-white ${pct >= 80 ? 'bg-success' : pct >= 50 ? 'bg-warning' : 'bg-danger'}`}>
+                               <span className="text-sm font-black leading-none">{avg}</span>
+                               <span className="text-[8px] opacity-80">/5</span>
                             </div>
                             <div className="flex-1">
                                <div className="font-bold text-sm dark:text-white">{dateStr}</div>
                                <div className="text-xs text-slate-400">{entry.questionsAnswered} Fragen · {entry.sessions} Sitzung{entry.sessions > 1 ? 'en' : ''}</div>
                             </div>
                             <div className="text-right">
-                               <div className="text-xs"><span className="text-success font-bold">{entry.correct}</span> <span className="text-slate-400">/</span> <span className="text-danger font-bold">{entry.wrong}</span></div>
+                               <div className="text-sm font-bold text-primary">{tp}<span className="text-slate-400 font-normal">/{mp}</span></div>
+                               <div className="text-[10px] text-slate-400">Punkte</div>
                             </div>
                          </div>
                       );
@@ -1585,10 +1628,10 @@
        useEffect(() => { if(darkMode) document.documentElement.classList.add("dark"); else document.documentElement.classList.remove("dark"); localStorage.setItem("theme", darkMode ? "dark" : "light"); }, [darkMode]);
 
        // Wrap training exit to record stats
-       const handleTrainExit = useCallback((correctCount, wrongCount) => {
-          const total = (correctCount || 0) + (wrongCount || 0);
-          if(total > 0) {
-             recordSession(total, correctCount || 0, wrongCount || 0);
+       const handleTrainExit = useCallback((totalPoints, totalMaxPoints, questionsAnswered) => {
+          const count = questionsAnswered || 0;
+          if(count > 0) {
+             recordSession(count, totalPoints || 0, totalMaxPoints || 0);
              recordActivity();
           }
           setView('dashboard');
