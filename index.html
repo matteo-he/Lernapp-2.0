@@ -68,8 +68,8 @@
 
     .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
   </style>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script type="module">
     import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
@@ -127,7 +127,12 @@
       Trash: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
       Edit: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
       Moon: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>,
-      Sun: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+      Sun: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>,
+      Clock: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>,
+      BarChart: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>,
+      Target: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+      Calendar: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>,
+      TrendingUp: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
     };
 
     /* ================= UTILS & LOGIC ================= */
@@ -187,6 +192,82 @@
        const save = async (q) => { setQuestions(prev => { const idx = prev.findIndex(item => item.id === q.id); if(idx >= 0) { const n = [...prev]; n[idx] = q; return n; } return [...prev, q]; }); if(window.FIREBASE_BRIDGE) { const { setDoc, doc, getFirestore, ensureApp } = window.FIREBASE_BRIDGE; await setDoc(doc(getFirestore(ensureApp()), "questions", q.id), q); } };
        const remove = async (id) => { setQuestions(prev => prev.filter(q => q.id !== id)); if(window.FIREBASE_BRIDGE) { const { setDoc, doc, getFirestore, ensureApp } = window.FIREBASE_BRIDGE; await setDoc(doc(getFirestore(ensureApp()), "questions", id), { __deleted: true }, { merge: true }); } };
        return { questions, status, save, remove };
+    }
+
+    /* ================= DAILY STATS HELPER ================= */
+    const todayKey = () => new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+    function useDailyStreak(userId) {
+       const [streakData, setStreakData, streakStatus] = useUserLocalStorage(userId, "streakData", { activeDays: [], currentStreak: 0, longestStreak: 0 });
+
+       const recordActivity = useCallback(() => {
+          const today = todayKey();
+          setStreakData(prev => {
+             const days = prev.activeDays || [];
+             if(days.includes(today)) return prev; // already recorded
+             const newDays = [...days, today].sort();
+
+             // Calculate streak from most recent days backwards
+             let streak = 1;
+             const d = new Date(today);
+             for(let i = 1; i < 1000; i++) {
+                d.setDate(d.getDate() - 1);
+                const prevDay = d.toISOString().slice(0, 10);
+                if(newDays.includes(prevDay)) streak++;
+                else break;
+             }
+             return { activeDays: newDays.slice(-90), currentStreak: streak, longestStreak: Math.max(prev.longestStreak || 0, streak) };
+          });
+       }, [setStreakData]);
+
+       // Calculate current streak on load (in case user missed days)
+       const currentStreak = useMemo(() => {
+          const days = streakData.activeDays || [];
+          if(days.length === 0) return 0;
+          const today = todayKey();
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+          // Streak counts if today or yesterday has activity
+          const lastDay = days[days.length - 1];
+          if(lastDay !== today && lastDay !== yesterdayStr) return 0;
+
+          let streak = 0;
+          const d = new Date(lastDay);
+          for(let i = 0; i < 1000; i++) {
+             const key = d.toISOString().slice(0, 10);
+             if(days.includes(key)) streak++;
+             else break;
+             d.setDate(d.getDate() - 1);
+          }
+          return streak;
+       }, [streakData.activeDays]);
+
+       return { streakData, currentStreak, longestStreak: streakData.longestStreak || 0, recordActivity, activeDays: streakData.activeDays || [] };
+    }
+
+    function useLearningHistory(userId) {
+       const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", []);
+
+       const recordSession = useCallback((questionsAnswered, correctCount, wrongCount) => {
+          const today = todayKey();
+          setHistory(prev => {
+             const arr = [...(prev || [])];
+             const todayEntry = arr.find(e => e.date === today);
+             if(todayEntry) {
+                todayEntry.questionsAnswered += questionsAnswered;
+                todayEntry.correct += correctCount;
+                todayEntry.wrong += wrongCount;
+                todayEntry.sessions += 1;
+             } else {
+                arr.push({ date: today, questionsAnswered, correct: correctCount, wrong: wrongCount, sessions: 1 });
+             }
+             return arr.slice(-90); // Keep 90 days
+          });
+       }, [setHistory]);
+
+       return { history: history || [], recordSession };
     }
 
     /* ================= UI COMPONENTS ================= */
@@ -387,6 +468,8 @@
        const [isCorrect, setIsCorrect] = useState(false);
        const [lastSelection, setLastSelection] = useState([]);
        const [loading, setLoading] = useState(true);
+       const sessionStatsRef = useRef({ correct: 0, wrong: 0 });
+       const exitWithStats = () => onExit(sessionStatsRef.current.correct, sessionStatsRef.current.wrong);
 
        useEffect(() => {
           if(!questions || queue.length > 0) return;
@@ -416,6 +499,7 @@
           const currentQ = queue[qIndex];
           const correct = JSON.stringify(selection.sort()) === JSON.stringify(currentQ.correct.sort());
           setIsCorrect(correct); setLastSelection(selection); setFeedbackMode(true);
+          if(correct) sessionStatsRef.current.correct++; else sessionStatsRef.current.wrong++;
           const newTiers = { ...(userData.tiers || {}) }; const curTier = newTiers[currentQ.id] || 1;
           newTiers[currentQ.id] = correct ? Math.min(5, curTier + 1) : Math.max(1, curTier - 1);
           setUserData(prev => ({ ...prev, tiers: newTiers, score: (prev.score||0) + (correct ? 10 : 0), streak: correct ? (prev.streak||0) + 1 : 0 }));
@@ -423,7 +507,7 @@
        const handleNext = () => { setFeedbackMode(false); setLastSelection([]); if(qIndex < queue.length - 1) setQIndex(i => i + 1); else setQueue([]); };
 
        if(loading) return <div className="min-h-screen flex items-center justify-center text-primary font-bold animate-pulse">Lade Training...</div>;
-       if(!queue.length) return <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center space-y-6"><div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center"><Icons.Check className="w-12 h-12 text-slate-400"/></div><h2 className="text-xl font-bold dark:text-white">Alles erledigt!</h2><p className="text-slate-500">Für heute gibt es keine Fragen mehr in dieser Kategorie.</p><Button onClick={onExit}>Zurück</Button></div>;
+       if(!queue.length) return <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center space-y-6"><div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center"><Icons.Check className="w-12 h-12 text-slate-400"/></div><h2 className="text-xl font-bold dark:text-white">Alles erledigt!</h2><p className="text-slate-500">Für heute gibt es keine Fragen mehr in dieser Kategorie.</p><Button onClick={exitWithStats}>Zurück</Button></div>;
 
        const currentQ = queue[qIndex];
        const toggleSel = (i) => !feedbackMode && setLastSelection(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
@@ -432,7 +516,7 @@
          <div className="h-screen flex flex-col bg-bg-light dark:bg-bg-dark relative overflow-hidden">
             {/* Progress Header */}
             <div className="px-6 pt-12 pb-4 flex items-center gap-4">
-               <button onClick={onExit} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Icons.X className="w-6 h-6"/></button>
+               <button onClick={exitWithStats} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Icons.X className="w-6 h-6"/></button>
                <SegmentedProgress current={qIndex} total={queue.length} />
             </div>
 
@@ -492,7 +576,286 @@
        );
     };
 
-    const Dashboard = ({ userData, questions, onStartTrain }) => {
+    // --- Exam Mode ---
+    const ExamMode = ({ questions, userData, setUserData, onExit, onFinish }) => {
+       const [phase, setPhase] = useState('setup'); // setup | running | review
+       const [numQuestions, setNumQuestions] = useState(20);
+       const [timePerQuestion, setTimePerQuestion] = useState(60); // seconds per question
+       const [queue, setQueue] = useState([]);
+       const [qIndex, setQIndex] = useState(0);
+       const [answers, setAnswers] = useState({}); // { qIndex: [selectedIndices] }
+       const [currentSelection, setCurrentSelection] = useState([]);
+       const [timeLeft, setTimeLeft] = useState(0);
+       const timerRef = useRef(null);
+
+       const startExam = () => {
+          const pool = [...questions];
+          const shuffled = pool.sort(() => Math.random() - 0.5).slice(0, Math.min(numQuestions, pool.length));
+          setQueue(shuffled);
+          setQIndex(0);
+          setAnswers({});
+          setCurrentSelection([]);
+          setTimeLeft(shuffled.length * timePerQuestion);
+          setPhase('running');
+       };
+
+       // Timer
+       useEffect(() => {
+          if(phase !== 'running') return;
+          timerRef.current = setInterval(() => {
+             setTimeLeft(prev => {
+                if(prev <= 1) { clearInterval(timerRef.current); setPhase('review'); return 0; }
+                return prev - 1;
+             });
+          }, 1000);
+          return () => clearInterval(timerRef.current);
+       }, [phase]);
+
+       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+
+       const confirmAnswer = () => {
+          const newAnswers = { ...answers, [qIndex]: currentSelection };
+          setAnswers(newAnswers);
+          if(qIndex < queue.length - 1) {
+             setQIndex(qIndex + 1);
+             setCurrentSelection(newAnswers[qIndex + 1] || []);
+          } else {
+             clearInterval(timerRef.current);
+             setPhase('review');
+          }
+       };
+
+       const jumpTo = (i) => {
+          const newAnswers = { ...answers, [qIndex]: currentSelection };
+          setAnswers(newAnswers);
+          setQIndex(i);
+          setCurrentSelection(newAnswers[i] || []);
+       };
+
+       const finishExam = () => {
+          clearInterval(timerRef.current);
+          const finalAnswers = { ...answers, [qIndex]: currentSelection };
+          setAnswers(finalAnswers);
+          setPhase('review');
+       };
+
+       // Calculate results
+       const getResults = () => {
+          let correct = 0;
+          let wrong = 0;
+          let unanswered = 0;
+          const details = queue.map((q, i) => {
+             const sel = answers[i] || [];
+             if(sel.length === 0) { unanswered++; return { q, sel, isCorrect: false, status: 'unanswered' }; }
+             const isCorrect = JSON.stringify(sel.sort()) === JSON.stringify(q.correct.sort());
+             if(isCorrect) correct++; else wrong++;
+             return { q, sel, isCorrect, status: isCorrect ? 'correct' : 'wrong' };
+          });
+          const percentage = queue.length > 0 ? Math.round((correct / queue.length) * 100) : 0;
+          let grade = 'Nicht bestanden';
+          if(percentage >= 90) grade = 'Sehr gut';
+          else if(percentage >= 75) grade = 'Gut';
+          else if(percentage >= 60) grade = 'Befriedigend';
+          else if(percentage >= 50) grade = 'Bestanden';
+          return { correct, wrong, unanswered, percentage, grade, details, passed: percentage >= 50 };
+       };
+
+       // --- SETUP ---
+       if(phase === 'setup') {
+          return (
+             <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-bg-light dark:bg-bg-dark animate-fade-in">
+                <div className="w-full max-w-md space-y-8">
+                   <div className="text-center space-y-2">
+                      <div className="w-20 h-20 bg-gradient-to-br from-warning to-danger rounded-[1.5rem] mx-auto flex items-center justify-center shadow-xl">
+                         <Icons.Target className="w-10 h-10 text-white" />
+                      </div>
+                      <h2 className="text-2xl font-black dark:text-white">Prüfungsmodus</h2>
+                      <p className="text-slate-500 text-sm">Simuliere eine echte Prüfung ohne Feedback</p>
+                   </div>
+
+                   <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-3xl border border-border-light dark:border-border-dark space-y-5">
+                      <div>
+                         <label className="text-xs font-bold uppercase text-slate-400 mb-2 block">Anzahl Fragen</label>
+                         <div className="flex gap-2">
+                            {[10, 20, 30, 50].map(n => (
+                               <button key={n} onClick={() => setNumQuestions(n)}
+                                  className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${numQuestions === n ? 'bg-primary text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                                  {n}
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+                      <div>
+                         <label className="text-xs font-bold uppercase text-slate-400 mb-2 block">Zeit pro Frage (Sek.)</label>
+                         <div className="flex gap-2">
+                            {[30, 45, 60, 90].map(t => (
+                               <button key={t} onClick={() => setTimePerQuestion(t)}
+                                  className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${timePerQuestion === t ? 'bg-primary text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                                  {t}s
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl text-center">
+                         <span className="text-xs text-slate-400">Gesamtzeit: </span>
+                         <span className="font-bold text-primary">{formatTime(Math.min(numQuestions, questions.length) * timePerQuestion)}</span>
+                         <span className="text-xs text-slate-400 ml-2">({Math.min(numQuestions, questions.length)} Fragen)</span>
+                      </div>
+                   </div>
+
+                   <div className="space-y-3">
+                      <Button size="lg" fullWidth onClick={startExam} className="shadow-xl bg-gradient-to-r from-warning to-danger border-0">
+                         <Icons.Clock className="w-5 h-5" /> Prüfung starten
+                      </Button>
+                      <Button variant="ghost" fullWidth onClick={onExit}>Zurück</Button>
+                   </div>
+                </div>
+             </div>
+          );
+       }
+
+       // --- RUNNING ---
+       if(phase === 'running') {
+          const currentQ = queue[qIndex];
+          const toggleSel = (i) => setCurrentSelection(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
+          const answeredCount = Object.keys(answers).filter(k => (answers[k] || []).length > 0).length + (currentSelection.length > 0 ? 1 : 0);
+          const urgency = timeLeft < 60 ? 'text-danger animate-pulse' : timeLeft < 180 ? 'text-warning' : 'text-primary';
+
+          return (
+             <div className="h-screen flex flex-col bg-bg-light dark:bg-bg-dark relative overflow-hidden">
+                {/* Timer Header */}
+                <div className="px-6 pt-12 pb-2 space-y-3">
+                   <div className="flex items-center justify-between">
+                      <button onClick={() => { if(confirm('Prüfung wirklich abbrechen?')) { clearInterval(timerRef.current); onExit(); }}} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                         <Icons.X className="w-6 h-6"/>
+                      </button>
+                      <div className={`flex items-center gap-2 font-mono font-black text-xl ${urgency}`}>
+                         <Icons.Clock className="w-5 h-5" />
+                         {formatTime(timeLeft)}
+                      </div>
+                      <button onClick={finishExam} className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20">
+                         Abgeben
+                      </button>
+                   </div>
+                   <SegmentedProgress current={qIndex} total={queue.length} />
+                   <div className="text-xs text-slate-400 text-center font-medium">Frage {qIndex + 1} / {queue.length} · {answeredCount} beantwortet</div>
+                </div>
+
+                {/* Question */}
+                <div className="flex-1 overflow-y-auto px-6 pb-40">
+                   <div className="max-w-xl mx-auto space-y-6 py-4">
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
+                      <div className="space-y-3">
+                         {currentQ.choices.map((txt, i) => {
+                            const sel = currentSelection.includes(i);
+                            return (
+                               <div key={i} onClick={() => toggleSel(i)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200 flex items-start gap-4 ${sel ? 'border-primary bg-primary/5 text-primary-dark dark:text-primary shadow-[0_0_0_1px_rgba(99,102,241,1)]' : 'border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                  <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 ${sel ? 'border-primary bg-primary' : 'border-slate-300 dark:border-slate-600'}`}>
+                                     {sel && <Icons.Check className="w-4 h-4 text-white" strokeWidth={4} />}
+                                  </div>
+                                  <span className="font-medium text-base leading-relaxed">{txt}</span>
+                               </div>
+                            );
+                         })}
+                      </div>
+                   </div>
+                </div>
+
+                {/* Navigation */}
+                <div className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-bg-light dark:from-bg-dark via-bg-light dark:via-bg-dark to-transparent safe-pb">
+                   <div className="max-w-xl mx-auto space-y-3">
+                      <div className="flex gap-2">
+                         <Button variant="outline" onClick={() => qIndex > 0 && jumpTo(qIndex - 1)} disabled={qIndex === 0} className="flex-1">Zurück</Button>
+                         <Button onClick={confirmAnswer} className="flex-1" disabled={!currentSelection.length}>
+                            {qIndex === queue.length - 1 ? 'Abgeben' : 'Weiter'}
+                         </Button>
+                      </div>
+                      {/* Question dots for navigation */}
+                      <div className="flex flex-wrap gap-1.5 justify-center">
+                         {queue.map((_, i) => {
+                            const hasAnswer = (answers[i] || []).length > 0 || (i === qIndex && currentSelection.length > 0);
+                            return (
+                               <button key={i} onClick={() => jumpTo(i)}
+                                  className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === qIndex ? 'bg-primary text-white scale-110' : hasAnswer ? 'bg-success/20 text-success border border-success/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                  {i + 1}
+                               </button>
+                            );
+                         })}
+                      </div>
+                   </div>
+                </div>
+             </div>
+          );
+       }
+
+       // --- REVIEW ---
+       const results = getResults();
+       return (
+          <div className="min-h-screen bg-bg-light dark:bg-bg-dark p-6 pb-32 animate-fade-in">
+             <div className="max-w-xl mx-auto space-y-8 pt-8">
+                {/* Result Header */}
+                <div className="text-center space-y-4">
+                   <div className={`w-24 h-24 rounded-[2rem] mx-auto flex items-center justify-center shadow-xl ${results.passed ? 'bg-gradient-to-br from-success to-emerald-600' : 'bg-gradient-to-br from-danger to-red-700'}`}>
+                      {results.passed ? <Icons.Check className="w-12 h-12 text-white" /> : <Icons.X className="w-12 h-12 text-white" />}
+                   </div>
+                   <div>
+                      <h2 className="text-3xl font-black dark:text-white">{results.grade}</h2>
+                      <p className="text-slate-500 mt-1">{results.percentage}% richtig</p>
+                   </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3">
+                   <div className="bg-success/10 border border-success/20 rounded-2xl p-4 text-center">
+                      <div className="text-2xl font-black text-success">{results.correct}</div>
+                      <div className="text-[10px] font-bold text-success/80 uppercase">Richtig</div>
+                   </div>
+                   <div className="bg-danger/10 border border-danger/20 rounded-2xl p-4 text-center">
+                      <div className="text-2xl font-black text-danger">{results.wrong}</div>
+                      <div className="text-[10px] font-bold text-danger/80 uppercase">Falsch</div>
+                   </div>
+                   <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-center">
+                      <div className="text-2xl font-black text-slate-500">{results.unanswered}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Offen</div>
+                   </div>
+                </div>
+
+                {/* Detail Review */}
+                <div className="space-y-3">
+                   <h3 className="font-bold text-lg dark:text-white">Detailauswertung</h3>
+                   {results.details.map((d, i) => (
+                      <div key={i} className={`p-4 rounded-2xl border ${d.status === 'correct' ? 'bg-success/5 border-success/20' : d.status === 'wrong' ? 'bg-danger/5 border-danger/20' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                         <div className="flex items-start gap-3">
+                            <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${d.status === 'correct' ? 'bg-success' : d.status === 'wrong' ? 'bg-danger' : 'bg-slate-400'}`}>{i+1}</div>
+                            <div className="flex-1 min-w-0">
+                               <p className="font-medium text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{d.q.question}</p>
+                               <div className="mt-2 space-y-1">
+                                  {d.q.choices.map((c, ci) => {
+                                     const wasSelected = d.sel.includes(ci);
+                                     const isCorrectChoice = d.q.correct.includes(ci);
+                                     return (
+                                        <div key={ci} className={`text-xs px-2 py-1 rounded-lg flex items-center gap-2 ${isCorrectChoice ? 'text-success font-bold' : wasSelected ? 'text-danger font-bold' : 'text-slate-400'}`}>
+                                           {isCorrectChoice ? <Icons.Check className="w-3 h-3"/> : wasSelected ? <Icons.X className="w-3 h-3"/> : <span className="w-3"/>}
+                                           {c}
+                                        </div>
+                                     );
+                                  })}
+                               </div>
+                               {d.q.explain && <p className="text-xs text-slate-500 mt-2 italic">{d.q.explain}</p>}
+                               {d.q.law_ref && <p className="text-[10px] font-mono text-slate-400 mt-1">{d.q.law_ref}</p>}
+                            </div>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+
+                <Button size="lg" fullWidth onClick={onExit} className="shadow-xl">Zurück zur Übersicht</Button>
+             </div>
+          </div>
+       );
+    };
+
+    const Dashboard = ({ userData, questions, onStartTrain, onStartExam, dailyStreak }) => {
        const tiers = userData.tiers || {};
        const tierValues = Object.values(tiers);
        
@@ -543,7 +906,7 @@
                   <div className="p-2 bg-accent/10 rounded-xl text-accent"><Icons.Flame className="w-5 h-5"/></div>
                   <div>
                      <div className="text-xs font-bold text-slate-400 uppercase">Streak</div>
-                     <div className="font-black text-slate-800 dark:text-white">{userData.streak} <span className="text-xs font-medium text-slate-400">Tage</span></div>
+                     <div className="font-black text-slate-800 dark:text-white">{dailyStreak} <span className="text-xs font-medium text-slate-400">Tage</span></div>
                   </div>
                </div>
                <div className="flex-1 bg-surface-light dark:bg-surface-dark p-3 rounded-2xl border border-border-light dark:border-border-dark flex items-center gap-3">
@@ -585,7 +948,12 @@
                </div>
             </div>
 
-            <Button size="lg" fullWidth onClick={() => onStartTrain(null)} className="shadow-primary/40 py-5 text-lg">JETZT LERNEN</Button>
+            <div className="flex gap-3">
+               <Button size="lg" fullWidth onClick={() => onStartTrain(null)} className="shadow-primary/40 py-5 text-lg flex-1">JETZT LERNEN</Button>
+               <Button size="lg" onClick={onStartExam} variant="outline" className="py-5 border-warning text-warning hover:bg-warning/10 flex-shrink-0">
+                  <Icons.Target className="w-5 h-5" /> Prüfung
+               </Button>
+            </div>
 
             {/* Categories */}
             <div className="space-y-4">
@@ -632,21 +1000,190 @@
        );
     };
 
+    // --- Stats Screen ---
+    const StatsScreen = ({ history, streakData, currentStreak, longestStreak, activeDays, userData, questions }) => {
+       const last7 = useMemo(() => {
+          const result = [];
+          for(let i = 6; i >= 0; i--) {
+             const d = new Date();
+             d.setDate(d.getDate() - i);
+             const key = d.toISOString().slice(0, 10);
+             const entry = (history || []).find(e => e.date === key);
+             const dayLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
+             result.push({ date: key, dayLabel, questionsAnswered: entry?.questionsAnswered || 0, correct: entry?.correct || 0, wrong: entry?.wrong || 0 });
+          }
+          return result;
+       }, [history]);
+
+       const maxQuestions = Math.max(...last7.map(d => d.questionsAnswered), 1);
+       const totalAnswered = (history || []).reduce((s, e) => s + e.questionsAnswered, 0);
+       const totalCorrect = (history || []).reduce((s, e) => s + e.correct, 0);
+       const totalAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+
+       // Streak calendar (last 28 days)
+       const last28 = useMemo(() => {
+          const result = [];
+          for(let i = 27; i >= 0; i--) {
+             const d = new Date();
+             d.setDate(d.getDate() - i);
+             const key = d.toISOString().slice(0, 10);
+             result.push({ date: key, active: (activeDays || []).includes(key), dayNum: d.getDate() });
+          }
+          return result;
+       }, [activeDays]);
+
+       const tiers = userData.tiers || {};
+       const tierValues = Object.values(tiers);
+       const total = questions.length || 1;
+       const mastered = tierValues.filter(t => t >= 4).length;
+
+       return (
+          <div className="px-6 py-8 space-y-8 pb-32 animate-fade-in">
+             <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Statistiken</h2>
+
+             {/* Streak Section */}
+             <div className="bg-gradient-to-br from-accent/10 to-primary/10 p-6 rounded-[2rem] border border-accent/20 space-y-4">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-accent/20 rounded-xl text-accent"><Icons.Flame className="w-6 h-6"/></div>
+                      <div>
+                         <div className="text-xs font-bold text-slate-400 uppercase">Täglicher Streak</div>
+                         <div className="text-3xl font-black text-slate-800 dark:text-white">{currentStreak} <span className="text-base font-medium text-slate-400">Tage</span></div>
+                      </div>
+                   </div>
+                   <div className="text-right">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Rekord</div>
+                      <div className="text-lg font-black text-accent">{longestStreak} Tage</div>
+                   </div>
+                </div>
+
+                {/* Mini Calendar */}
+                <div className="grid grid-cols-7 gap-1.5">
+                   {last28.map((d, i) => (
+                      <div key={i} className={`aspect-square rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${d.active ? 'bg-accent text-white shadow-sm shadow-accent/30' : d.date === todayKey() ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 ring-2 ring-accent/50' : 'bg-slate-100 dark:bg-slate-800/50 text-slate-400'}`}>
+                         {d.dayNum}
+                      </div>
+                   ))}
+                </div>
+             </div>
+
+             {/* Weekly Chart */}
+             <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-[2rem] border border-border-light dark:border-border-dark space-y-4">
+                <div className="flex items-center gap-2">
+                   <Icons.BarChart className="w-5 h-5 text-primary" />
+                   <h3 className="font-bold dark:text-white">Letzte 7 Tage</h3>
+                </div>
+                <div className="flex items-end gap-2 h-32">
+                   {last7.map((d, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                         <div className="w-full flex flex-col items-center justify-end h-24">
+                            {d.questionsAnswered > 0 && <span className="text-[10px] font-bold text-primary mb-1">{d.questionsAnswered}</span>}
+                            <div className="w-full rounded-t-lg transition-all duration-500" style={{
+                               height: `${Math.max(4, (d.questionsAnswered / maxQuestions) * 100)}%`,
+                               background: d.questionsAnswered > 0 ? 'linear-gradient(to top, #6366F1, #818CF8)' : '#E2E8F0',
+                               minHeight: '4px'
+                            }}></div>
+                         </div>
+                         <span className={`text-[10px] font-bold ${d.date === todayKey() ? 'text-primary' : 'text-slate-400'}`}>{d.dayLabel}</span>
+                      </div>
+                   ))}
+                </div>
+             </div>
+
+             {/* Summary Cards */}
+             <div className="grid grid-cols-2 gap-3">
+                <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
+                   <div className="flex items-center gap-2 mb-2">
+                      <Icons.TrendingUp className="w-4 h-4 text-success" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Genauigkeit</span>
+                   </div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{totalAccuracy}%</div>
+                </div>
+                <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
+                   <div className="flex items-center gap-2 mb-2">
+                      <Icons.Book className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Gesamt</span>
+                   </div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{totalAnswered}</div>
+                   <div className="text-xs text-slate-400">Fragen beantwortet</div>
+                </div>
+                <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
+                   <div className="flex items-center gap-2 mb-2">
+                      <Icons.Award className="w-4 h-4 text-warning" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Gemeistert</span>
+                   </div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{mastered}/{total}</div>
+                </div>
+                <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
+                   <div className="flex items-center gap-2 mb-2">
+                      <Icons.Calendar className="w-4 h-4 text-accent" />
+                      <span className="text-xs font-bold text-slate-400 uppercase">Lerntage</span>
+                   </div>
+                   <div className="text-2xl font-black text-slate-800 dark:text-white">{(activeDays || []).length}</div>
+                </div>
+             </div>
+
+             {/* Recent Sessions */}
+             {(history || []).length > 0 && (
+                <div className="space-y-3">
+                   <h3 className="font-bold text-lg dark:text-white">Verlauf</h3>
+                   {[...(history || [])].reverse().slice(0, 14).map((entry, i) => {
+                      const acc = entry.questionsAnswered > 0 ? Math.round((entry.correct / entry.questionsAnswered) * 100) : 0;
+                      const dateObj = new Date(entry.date + 'T00:00:00');
+                      const dateStr = dateObj.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+                      return (
+                         <div key={i} className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white ${acc >= 80 ? 'bg-success' : acc >= 50 ? 'bg-warning' : 'bg-danger'}`}>
+                               {acc}%
+                            </div>
+                            <div className="flex-1">
+                               <div className="font-bold text-sm dark:text-white">{dateStr}</div>
+                               <div className="text-xs text-slate-400">{entry.questionsAnswered} Fragen · {entry.sessions} Sitzung{entry.sessions > 1 ? 'en' : ''}</div>
+                            </div>
+                            <div className="text-right">
+                               <div className="text-xs"><span className="text-success font-bold">{entry.correct}</span> <span className="text-slate-400">/</span> <span className="text-danger font-bold">{entry.wrong}</span></div>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+             )}
+          </div>
+       );
+    };
+
     /* ================= APP SHELL ================= */
     const App = () => {
        const userManager = useUsers();
        const [activeUser, setActiveUser] = useUserLocalStorage("app", "activeUser", null);
-       const [view, setView] = useState("dashboard"); 
+       const [view, setView] = useState("dashboard");
        const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light"); // Default Dark
        const [trainFilter, setTrainFilter] = useState(null);
        const { questions, save, remove, status: qStatus } = useQuestions();
        const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 });
 
+       // Daily Streak & Learning History hooks
+       const { streakData, currentStreak, longestStreak, recordActivity, activeDays } = useDailyStreak(activeUser?.id);
+       const { history, recordSession } = useLearningHistory(activeUser?.id);
+
        useEffect(() => { if(darkMode) document.documentElement.classList.add("dark"); else document.documentElement.classList.remove("dark"); localStorage.setItem("theme", darkMode ? "dark" : "light"); }, [darkMode]);
+
+       // Wrap training exit to record stats
+       const handleTrainExit = useCallback((correctCount, wrongCount) => {
+          const total = (correctCount || 0) + (wrongCount || 0);
+          if(total > 0) {
+             recordSession(total, correctCount || 0, wrongCount || 0);
+             recordActivity();
+          }
+          setView('dashboard');
+       }, [recordSession, recordActivity]);
+
        const startTraining = (filter) => { setTrainFilter(filter); setView('train'); };
+       const startExam = () => setView('exam');
 
        if(!activeUser) return <ErrorBoundary><AuthScreen userManager={userManager} onLogin={setActiveUser} /></ErrorBoundary>;
-       if(view === 'train') return <ErrorBoundary><TrainingMode questions={questions} userData={userData} setUserData={setUserData} onExit={()=>setView('dashboard')} filterTag={trainFilter} /></ErrorBoundary>;
+       if(view === 'train') return <ErrorBoundary><TrainingMode questions={questions} userData={userData} setUserData={setUserData} onExit={handleTrainExit} filterTag={trainFilter} /></ErrorBoundary>;
+       if(view === 'exam') return <ErrorBoundary><ExamMode questions={questions} userData={userData} setUserData={setUserData} onExit={()=>setView('dashboard')} /></ErrorBoundary>;
 
        const NavItem = ({ id, icon: Icon, label }) => (
          <button onClick={()=>setView(id)} className={`relative p-3 rounded-2xl transition-all duration-300 flex flex-col items-center gap-1 ${view===id ? 'text-primary' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}>
@@ -673,14 +1210,17 @@
              </header>
 
              <main className="flex-1 max-w-lg mx-auto w-full">
-                {view === 'dashboard' && <Dashboard userData={userData} questions={questions} onStartTrain={startTraining} />}
+                {view === 'dashboard' && <Dashboard userData={userData} questions={questions} onStartTrain={startTraining} onStartExam={startExam} dailyStreak={currentStreak} />}
+                {view === 'stats' && <StatsScreen history={history} streakData={streakData} currentStreak={currentStreak} longestStreak={longestStreak} activeDays={activeDays} userData={userData} questions={questions} />}
                 {view === 'admin' && <AdminPanel questions={questions} qManager={{save, remove}} />}
                 {view === 'profile' && <ProfileScreen user={activeUser} userManager={userManager} onLogout={()=>setActiveUser(null)} />}
              </main>
 
              <div className="fixed bottom-6 left-0 w-full flex justify-center z-50 px-4 safe-pb">
-                <nav className="glass bg-white/80 dark:bg-slate-900/80 px-6 py-2 rounded-full shadow-2xl border border-white/20 dark:border-slate-700/50 flex items-center gap-8 backdrop-blur-xl">
+                <nav className="glass bg-white/80 dark:bg-slate-900/80 px-6 py-2 rounded-full shadow-2xl border border-white/20 dark:border-slate-700/50 flex items-center gap-6 backdrop-blur-xl">
                    <NavItem id="dashboard" icon={Icons.Home} />
+                   <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
+                   <NavItem id="stats" icon={Icons.BarChart} />
                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
                    <NavItem id="admin" icon={Icons.Book} />
                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
