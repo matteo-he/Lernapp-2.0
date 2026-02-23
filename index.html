@@ -159,8 +159,40 @@
        return Math.max(0, points);
     }
 
+    /* ================= MERGE STRATEGIES (cross-device sync) ================= */
+    function mergeProgress(local, remote) {
+       if(!local || !remote) return remote || local || { tiers: {}, score: 0, streak: 0 };
+       const lt = local.tiers || {}, rt = remote.tiers || {}, mt = { ...rt };
+       for(const k in lt) mt[k] = Math.max(mt[k] || 0, lt[k] || 0);
+       return { tiers: mt, score: Math.max(local.score || 0, remote.score || 0), streak: Math.max(local.streak || 0, remote.streak || 0) };
+    }
+
+    function mergeLearningHistory(local, remote) {
+       const la = Array.isArray(local) ? local : [], ra = Array.isArray(remote) ? remote : [];
+       const map = new Map();
+       for(const e of la) map.set(e.date, { ...e });
+       for(const e of ra) {
+          const x = map.get(e.date);
+          if(x) map.set(e.date, { date: e.date, questionsAnswered: Math.max(x.questionsAnswered||0, e.questionsAnswered||0), totalPoints: Math.max(x.totalPoints||0, e.totalPoints||0), totalMaxPoints: Math.max(x.totalMaxPoints||0, e.totalMaxPoints||0), sessions: Math.max(x.sessions||0, e.sessions||0) });
+          else map.set(e.date, { ...e });
+       }
+       return Array.from(map.values()).sort((a,b) => a.date.localeCompare(b.date)).slice(-90);
+    }
+
+    function mergeStreakData(local, remote) {
+       if(!local || !remote) return remote || local || { activeDays: [], currentStreak: 0, longestStreak: 0 };
+       const allDays = [...new Set([...(local.activeDays||[]), ...(remote.activeDays||[])])].sort().slice(-90);
+       let cs = 0;
+       if(allDays.length > 0) {
+          const today = todayKey(), yd = new Date(); yd.setDate(yd.getDate()-1); const yds = yd.toISOString().slice(0,10);
+          const last = allDays[allDays.length-1];
+          if(last === today || last === yds) { const d = new Date(last); for(let i=0;i<1000;i++){ if(allDays.includes(d.toISOString().slice(0,10))) cs++; else break; d.setDate(d.getDate()-1); } }
+       }
+       return { activeDays: allDays, currentStreak: cs, longestStreak: Math.max(local.longestStreak||0, remote.longestStreak||0, cs) };
+    }
+
     /* ================= HOOKS ================= */
-    function useUserLocalStorage(userId, key, initial){
+    function useUserLocalStorage(userId, key, initial, mergeFn){
       const storageKey = userId ? `${userId}:${key}` : null;
       const [state, setState] = useState(() => { try { return storageKey ? (JSON.parse(localStorage.getItem(storageKey)) || initial) : initial; } catch { return initial; } });
       const [status, setStatus] = useState("local"); 
@@ -169,7 +201,7 @@
       useEffect(() => {
          if(!userId || !window.FIREBASE_BRIDGE) return;
          let unsub = () => {}; const { onSnapshot, doc, getFirestore, ensureApp, setDoc } = window.FIREBASE_BRIDGE; const db = getFirestore(ensureApp());
-         const sync = async () => { try { setStatus("syncing"); unsub = onSnapshot(doc(db, "userProgress", userId), (snap) => { if(snap.exists()) { const data = snap.data(); if(data[key]) { setState(prev => JSON.stringify(prev) !== JSON.stringify(data[key]) ? data[key] : prev); setStatus("synced"); } } else { setDoc(doc(db, "userProgress", userId), { [key]: state }, { merge: true }); setStatus("synced"); } }, (err) => { setStatus("error"); }); } catch(e) { setStatus("error"); } };
+         const sync = async () => { try { setStatus("syncing"); unsub = onSnapshot(doc(db, "userProgress", userId), (snap) => { if(snap.exists()) { const data = snap.data(); if(data[key]) { setState(prev => { if(JSON.stringify(prev) === JSON.stringify(data[key])) return prev; return mergeFn ? mergeFn(prev, data[key]) : data[key]; }); setStatus("synced"); } } else { setDoc(doc(db, "userProgress", userId), { [key]: state }, { merge: true }); setStatus("synced"); } }, (err) => { setStatus("error"); }); } catch(e) { setStatus("error"); } };
          sync(); return () => unsub();
       }, [userId, key]);
       useEffect(() => {
@@ -213,7 +245,7 @@
     const todayKey = () => new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
     function useDailyStreak(userId) {
-       const [streakData, setStreakData, streakStatus] = useUserLocalStorage(userId, "streakData", { activeDays: [], currentStreak: 0, longestStreak: 0 });
+       const [streakData, setStreakData, streakStatus] = useUserLocalStorage(userId, "streakData", { activeDays: [], currentStreak: 0, longestStreak: 0 }, mergeStreakData);
 
        const recordActivity = useCallback(() => {
           const today = todayKey();
@@ -263,7 +295,7 @@
     }
 
     function useLearningHistory(userId) {
-       const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", []);
+       const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", [], mergeLearningHistory);
 
        const recordSession = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
           const today = todayKey();
@@ -1644,7 +1676,7 @@
        const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light"); // Default Dark
        const [trainFilter, setTrainFilter] = useState(null);
        const { questions, save, remove, status: qStatus } = useQuestions();
-       const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 });
+       const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 }, mergeProgress);
 
        // Daily Streak & Learning History hooks
        const { streakData, currentStreak, longestStreak, recordActivity, activeDays } = useDailyStreak(activeUser?.id);
