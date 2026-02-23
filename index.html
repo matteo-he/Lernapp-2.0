@@ -159,8 +159,40 @@
        return Math.max(0, points);
     }
 
+    /* ================= MERGE STRATEGIES (cross-device sync) ================= */
+    function mergeProgress(local, remote) {
+       if(!local || !remote) return remote || local || { tiers: {}, score: 0, streak: 0 };
+       const lt = local.tiers || {}, rt = remote.tiers || {}, mt = { ...rt };
+       for(const k in lt) mt[k] = Math.max(mt[k] || 0, lt[k] || 0);
+       return { tiers: mt, score: Math.max(local.score || 0, remote.score || 0), streak: Math.max(local.streak || 0, remote.streak || 0) };
+    }
+
+    function mergeLearningHistory(local, remote) {
+       const la = Array.isArray(local) ? local : [], ra = Array.isArray(remote) ? remote : [];
+       const map = new Map();
+       for(const e of la) map.set(e.date, { ...e });
+       for(const e of ra) {
+          const x = map.get(e.date);
+          if(x) map.set(e.date, { date: e.date, questionsAnswered: Math.max(x.questionsAnswered||0, e.questionsAnswered||0), totalPoints: Math.max(x.totalPoints||0, e.totalPoints||0), totalMaxPoints: Math.max(x.totalMaxPoints||0, e.totalMaxPoints||0), sessions: Math.max(x.sessions||0, e.sessions||0) });
+          else map.set(e.date, { ...e });
+       }
+       return Array.from(map.values()).sort((a,b) => a.date.localeCompare(b.date)).slice(-90);
+    }
+
+    function mergeStreakData(local, remote) {
+       if(!local || !remote) return remote || local || { activeDays: [], currentStreak: 0, longestStreak: 0 };
+       const allDays = [...new Set([...(local.activeDays||[]), ...(remote.activeDays||[])])].sort().slice(-90);
+       let cs = 0;
+       if(allDays.length > 0) {
+          const today = todayKey(), yd = new Date(); yd.setDate(yd.getDate()-1); const yds = yd.toISOString().slice(0,10);
+          const last = allDays[allDays.length-1];
+          if(last === today || last === yds) { const d = new Date(last); for(let i=0;i<1000;i++){ if(allDays.includes(d.toISOString().slice(0,10))) cs++; else break; d.setDate(d.getDate()-1); } }
+       }
+       return { activeDays: allDays, currentStreak: cs, longestStreak: Math.max(local.longestStreak||0, remote.longestStreak||0, cs) };
+    }
+
     /* ================= HOOKS ================= */
-    function useUserLocalStorage(userId, key, initial){
+    function useUserLocalStorage(userId, key, initial, mergeFn){
       const storageKey = userId ? `${userId}:${key}` : null;
       const [state, setState] = useState(() => { try { return storageKey ? (JSON.parse(localStorage.getItem(storageKey)) || initial) : initial; } catch { return initial; } });
       const [status, setStatus] = useState("local"); 
@@ -169,7 +201,7 @@
       useEffect(() => {
          if(!userId || !window.FIREBASE_BRIDGE) return;
          let unsub = () => {}; const { onSnapshot, doc, getFirestore, ensureApp, setDoc } = window.FIREBASE_BRIDGE; const db = getFirestore(ensureApp());
-         const sync = async () => { try { setStatus("syncing"); unsub = onSnapshot(doc(db, "userProgress", userId), (snap) => { if(snap.exists()) { const data = snap.data(); if(data[key]) { setState(prev => JSON.stringify(prev) !== JSON.stringify(data[key]) ? data[key] : prev); setStatus("synced"); } } else { setDoc(doc(db, "userProgress", userId), { [key]: state }, { merge: true }); setStatus("synced"); } }, (err) => { setStatus("error"); }); } catch(e) { setStatus("error"); } };
+         const sync = async () => { try { setStatus("syncing"); unsub = onSnapshot(doc(db, "userProgress", userId), (snap) => { if(snap.exists()) { const data = snap.data(); if(data[key]) { setState(prev => { if(JSON.stringify(prev) === JSON.stringify(data[key])) return prev; return mergeFn ? mergeFn(prev, data[key]) : data[key]; }); setStatus("synced"); } } else { setDoc(doc(db, "userProgress", userId), { [key]: state }, { merge: true }); setStatus("synced"); } }, (err) => { setStatus("error"); }); } catch(e) { setStatus("error"); } };
          sync(); return () => unsub();
       }, [userId, key]);
       useEffect(() => {
@@ -213,7 +245,7 @@
     const todayKey = () => new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
     function useDailyStreak(userId) {
-       const [streakData, setStreakData, streakStatus] = useUserLocalStorage(userId, "streakData", { activeDays: [], currentStreak: 0, longestStreak: 0 });
+       const [streakData, setStreakData, streakStatus] = useUserLocalStorage(userId, "streakData", { activeDays: [], currentStreak: 0, longestStreak: 0 }, mergeStreakData);
 
        const recordActivity = useCallback(() => {
           const today = todayKey();
@@ -263,7 +295,7 @@
     }
 
     function useLearningHistory(userId) {
-       const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", []);
+       const [history, setHistory, hStatus] = useUserLocalStorage(userId, "learningHistory", [], mergeLearningHistory);
 
        const recordSession = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
           const today = todayKey();
@@ -625,17 +657,20 @@
        );
     };
 
-    // --- Exam Mode ---
-    const ExamMode = ({ questions, userData, setUserData, onExit, onFinish }) => {
+    // --- Exam Mode (Üben - True/False with stats tracking) ---
+    const ExamMode = ({ questions, onExit, onRecordStats }) => {
        const [phase, setPhase] = useState('setup'); // setup | running | review
        const [numQuestions, setNumQuestions] = useState(20);
-       const [timePerQuestion, setTimePerQuestion] = useState(60); // seconds per question
+       const [timePerQuestion, setTimePerQuestion] = useState(60);
        const [queue, setQueue] = useState([]);
        const [qIndex, setQIndex] = useState(0);
-       const [answers, setAnswers] = useState({}); // { qIndex: [selectedIndices] }
-       const [currentSelection, setCurrentSelection] = useState([]);
+       const [answers, setAnswers] = useState({}); // { qIndex: { choiceIdx: 'true'|'false'|null } }
+       const [currentMarks, setCurrentMarks] = useState({});
        const [timeLeft, setTimeLeft] = useState(0);
+       const [statsRecorded, setStatsRecorded] = useState(false);
        const timerRef = useRef(null);
+
+       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
 
        const startExam = () => {
           const pool = [...questions];
@@ -643,12 +678,12 @@
           setQueue(shuffled);
           setQIndex(0);
           setAnswers({});
-          setCurrentSelection([]);
+          setCurrentMarks({});
+          setStatsRecorded(false);
           setTimeLeft(shuffled.length * timePerQuestion);
           setPhase('running');
        };
 
-       // Timer
        useEffect(() => {
           if(phase !== 'running') return;
           timerRef.current = setInterval(() => {
@@ -660,53 +695,59 @@
           return () => clearInterval(timerRef.current);
        }, [phase]);
 
-       const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-
-       const confirmAnswer = () => {
-          const newAnswers = { ...answers, [qIndex]: currentSelection };
+       const saveAndGo = (targetIndex) => {
+          const newAnswers = { ...answers, [qIndex]: { ...currentMarks } };
           setAnswers(newAnswers);
-          if(qIndex < queue.length - 1) {
-             setQIndex(qIndex + 1);
-             setCurrentSelection(newAnswers[qIndex + 1] || []);
-          } else {
-             clearInterval(timerRef.current);
-             setPhase('review');
-          }
+          setQIndex(targetIndex);
+          setCurrentMarks(newAnswers[targetIndex] || {});
        };
 
-       const jumpTo = (i) => {
-          const newAnswers = { ...answers, [qIndex]: currentSelection };
+       const goNext = () => {
+          const newAnswers = { ...answers, [qIndex]: { ...currentMarks } };
           setAnswers(newAnswers);
-          setQIndex(i);
-          setCurrentSelection(newAnswers[i] || []);
+          if(qIndex < queue.length - 1) {
+             const nextIdx = qIndex + 1;
+             setQIndex(nextIdx);
+             setCurrentMarks(newAnswers[nextIdx] || {});
+          } else {
+             finishExam();
+          }
        };
 
        const finishExam = () => {
           clearInterval(timerRef.current);
-          const finalAnswers = { ...answers, [qIndex]: currentSelection };
+          const finalAnswers = { ...answers, [qIndex]: { ...currentMarks } };
           setAnswers(finalAnswers);
           setPhase('review');
        };
 
-       // Calculate results
+       // Record stats when entering review phase
+       useEffect(() => {
+          if(phase === 'review' && !statsRecorded && queue.length > 0 && onRecordStats) {
+             let totalPts = 0;
+             const maxPts = queue.length * 5;
+             queue.forEach((q, i) => { totalPts += scoreQuestion(q, answers[i] || {}); });
+             onRecordStats(queue.length, totalPts, maxPts);
+             setStatsRecorded(true);
+          }
+       }, [phase, statsRecorded]);
+
        const getResults = () => {
-          let correct = 0;
-          let wrong = 0;
-          let unanswered = 0;
+          let totalPoints = 0;
+          const maxPoints = queue.length * 5;
           const details = queue.map((q, i) => {
-             const sel = answers[i] || [];
-             if(sel.length === 0) { unanswered++; return { q, sel, isCorrect: false, status: 'unanswered' }; }
-             const isCorrect = JSON.stringify(sel.sort()) === JSON.stringify(q.correct.sort());
-             if(isCorrect) correct++; else wrong++;
-             return { q, sel, isCorrect, status: isCorrect ? 'correct' : 'wrong' };
+             const marks = answers[i] || {};
+             const points = scoreQuestion(q, marks);
+             totalPoints += points;
+             return { q, marks, points };
           });
-          const percentage = queue.length > 0 ? Math.round((correct / queue.length) * 100) : 0;
+          const percentage = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
           let grade = 'Nicht bestanden';
           if(percentage >= 90) grade = 'Sehr gut';
           else if(percentage >= 75) grade = 'Gut';
           else if(percentage >= 60) grade = 'Befriedigend';
           else if(percentage >= 50) grade = 'Bestanden';
-          return { correct, wrong, unanswered, percentage, grade, details, passed: percentage >= 50 };
+          return { totalPoints, maxPoints, percentage, grade, details, passed: percentage >= 50 };
        };
 
        // --- SETUP ---
@@ -718,8 +759,8 @@
                       <div className="w-20 h-20 bg-gradient-to-br from-warning to-danger rounded-[1.5rem] mx-auto flex items-center justify-center shadow-xl">
                          <Icons.Target className="w-10 h-10 text-white" />
                       </div>
-                      <h2 className="text-2xl font-black dark:text-white">Prüfungsmodus</h2>
-                      <p className="text-slate-500 text-sm">Simuliere eine echte Prüfung ohne Feedback</p>
+                      <h2 className="text-2xl font-black dark:text-white">Übungsprüfung</h2>
+                      <p className="text-slate-500 text-sm">Simuliere eine Prüfung ohne Feedback</p>
                    </div>
 
                    <div className="bg-surface-light dark:bg-surface-dark p-6 rounded-3xl border border-border-light dark:border-border-dark space-y-5">
@@ -766,13 +807,14 @@
        // --- RUNNING ---
        if(phase === 'running') {
           const currentQ = queue[qIndex];
-          const toggleSel = (i) => setCurrentSelection(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
-          const answeredCount = Object.keys(answers).filter(k => (answers[k] || []).length > 0).length + (currentSelection.length > 0 ? 1 : 0);
+          const answeredCount = Object.keys(answers).filter(k => {
+             const m = answers[k] || {};
+             return Object.values(m).some(v => v !== null);
+          }).length + (Object.values(currentMarks).some(v => v !== null) ? 1 : 0);
           const urgency = timeLeft < 60 ? 'text-danger animate-pulse' : timeLeft < 180 ? 'text-warning' : 'text-primary';
 
           return (
              <div className="h-screen flex flex-col bg-bg-light dark:bg-bg-dark relative overflow-hidden">
-                {/* Timer Header */}
                 <div className="px-6 pt-12 pb-2 space-y-3">
                    <div className="flex items-center justify-between">
                       <button onClick={() => { if(confirm('Prüfung wirklich abbrechen?')) { clearInterval(timerRef.current); onExit(); }}} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
@@ -782,27 +824,36 @@
                          <Icons.Clock className="w-5 h-5" />
                          {formatTime(timeLeft)}
                       </div>
-                      <button onClick={finishExam} className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20">
+                      <button onClick={() => { if(confirm('Prüfung jetzt abgeben?')) finishExam(); }} className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20">
                          Abgeben
                       </button>
                    </div>
                    <SegmentedProgress current={qIndex} total={queue.length} />
-                   <div className="text-xs text-slate-400 text-center font-medium">Frage {qIndex + 1} / {queue.length} · {answeredCount} beantwortet</div>
+                   <div className="text-xs text-slate-400 text-center font-medium">Frage {qIndex + 1} / {queue.length} · {answeredCount} bewertet</div>
                 </div>
 
-                {/* Question */}
-                <div className="flex-1 overflow-y-auto px-6 pb-40">
-                   <div className="max-w-xl mx-auto space-y-6 py-4">
-                      <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
+                <div className="flex-1 overflow-y-auto px-6 pb-44">
+                   <div className="max-w-xl mx-auto space-y-5 py-4">
+                      <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Bewerte jede Aussage als Richtig oder Falsch:</p>
                       <div className="space-y-3">
-                         {currentQ.choices.map((txt, i) => {
-                            const sel = currentSelection.includes(i);
+                         {(currentQ.choices || []).map((txt, ci) => {
+                            const mark = currentMarks[ci] || null;
                             return (
-                               <div key={i} onClick={() => toggleSel(i)} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200 flex items-start gap-4 ${sel ? 'border-primary bg-primary/5 text-primary-dark dark:text-primary shadow-[0_0_0_1px_rgba(99,102,241,1)]' : 'border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                                  <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 ${sel ? 'border-primary bg-primary' : 'border-slate-300 dark:border-slate-600'}`}>
-                                     {sel && <Icons.Check className="w-4 h-4 text-white" strokeWidth={4} />}
+                               <div key={ci} className={`p-3 rounded-2xl border-2 transition-all duration-200 ${mark === 'true' ? 'border-success bg-success/5' : mark === 'false' ? 'border-danger bg-danger/5' : 'border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark'}`}>
+                                  <div className="flex items-start gap-3">
+                                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1 leading-relaxed pt-1">{txt}</span>
+                                     <div className="flex gap-1 flex-shrink-0">
+                                        <button onClick={() => setCurrentMarks(prev => ({ ...prev, [ci]: prev[ci] === 'true' ? null : 'true' }))}
+                                           className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${mark === 'true' ? 'bg-success text-white shadow-md shadow-success/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-success/20 hover:text-success'}`}>
+                                           <Icons.Check className="w-5 h-5" strokeWidth={3} />
+                                        </button>
+                                        <button onClick={() => setCurrentMarks(prev => ({ ...prev, [ci]: prev[ci] === 'false' ? null : 'false' }))}
+                                           className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${mark === 'false' ? 'bg-danger text-white shadow-md shadow-danger/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-danger/20 hover:text-danger'}`}>
+                                           <Icons.X className="w-5 h-5" strokeWidth={3} />
+                                        </button>
+                                     </div>
                                   </div>
-                                  <span className="font-medium text-base leading-relaxed">{txt}</span>
                                </div>
                             );
                          })}
@@ -810,21 +861,23 @@
                    </div>
                 </div>
 
-                {/* Navigation */}
-                <div className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-bg-light dark:from-bg-dark via-bg-light dark:via-bg-dark to-transparent safe-pb">
+                <div className="fixed bottom-0 left-0 w-full p-4 bg-gradient-to-t from-bg-light dark:from-bg-dark via-bg-light dark:via-bg-dark to-transparent safe-pb">
                    <div className="max-w-xl mx-auto space-y-3">
                       <div className="flex gap-2">
-                         <Button variant="outline" onClick={() => qIndex > 0 && jumpTo(qIndex - 1)} disabled={qIndex === 0} className="flex-1">Zurück</Button>
-                         <Button onClick={confirmAnswer} className="flex-1" disabled={!currentSelection.length}>
+                         <Button variant="outline" onClick={() => qIndex > 0 && saveAndGo(qIndex - 1)} disabled={qIndex === 0} className="flex-1">Zurück</Button>
+                         <Button onClick={goNext} className="flex-1">
                             {qIndex === queue.length - 1 ? 'Abgeben' : 'Weiter'}
                          </Button>
                       </div>
-                      {/* Question dots for navigation */}
                       <div className="flex flex-wrap gap-1.5 justify-center">
                          {queue.map((_, i) => {
-                            const hasAnswer = (answers[i] || []).length > 0 || (i === qIndex && currentSelection.length > 0);
+                            const hasAnswer = (() => {
+                               if(i === qIndex) return Object.values(currentMarks).some(v => v !== null);
+                               const m = answers[i] || {};
+                               return Object.values(m).some(v => v !== null);
+                            })();
                             return (
-                               <button key={i} onClick={() => jumpTo(i)}
+                               <button key={i} onClick={() => saveAndGo(i)}
                                   className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === qIndex ? 'bg-primary text-white scale-110' : hasAnswer ? 'bg-success/20 text-success border border-success/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
                                   {i + 1}
                                </button>
@@ -842,50 +895,43 @@
        return (
           <div className="min-h-screen bg-bg-light dark:bg-bg-dark p-6 pb-32 animate-fade-in">
              <div className="max-w-xl mx-auto space-y-8 pt-8">
-                {/* Result Header */}
                 <div className="text-center space-y-4">
                    <div className={`w-24 h-24 rounded-[2rem] mx-auto flex items-center justify-center shadow-xl ${results.passed ? 'bg-gradient-to-br from-success to-emerald-600' : 'bg-gradient-to-br from-danger to-red-700'}`}>
                       {results.passed ? <Icons.Check className="w-12 h-12 text-white" /> : <Icons.X className="w-12 h-12 text-white" />}
                    </div>
                    <div>
                       <h2 className="text-3xl font-black dark:text-white">{results.grade}</h2>
-                      <p className="text-slate-500 mt-1">{results.percentage}% richtig</p>
+                      <p className="text-slate-500 mt-1">{results.totalPoints} / {results.maxPoints} Punkte ({results.percentage}%)</p>
                    </div>
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-3">
-                   <div className="bg-success/10 border border-success/20 rounded-2xl p-4 text-center">
-                      <div className="text-2xl font-black text-success">{results.correct}</div>
-                      <div className="text-[10px] font-bold text-success/80 uppercase">Richtig</div>
-                   </div>
-                   <div className="bg-danger/10 border border-danger/20 rounded-2xl p-4 text-center">
-                      <div className="text-2xl font-black text-danger">{results.wrong}</div>
-                      <div className="text-[10px] font-bold text-danger/80 uppercase">Falsch</div>
-                   </div>
-                   <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-center">
-                      <div className="text-2xl font-black text-slate-500">{results.unanswered}</div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase">Offen</div>
-                   </div>
-                </div>
-
-                {/* Detail Review */}
                 <div className="space-y-3">
                    <h3 className="font-bold text-lg dark:text-white">Detailauswertung</h3>
                    {results.details.map((d, i) => (
-                      <div key={i} className={`p-4 rounded-2xl border ${d.status === 'correct' ? 'bg-success/5 border-success/20' : d.status === 'wrong' ? 'bg-danger/5 border-danger/20' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                      <div key={i} className={`p-4 rounded-2xl border ${d.points >= 4 ? 'bg-success/5 border-success/20' : d.points >= 2 ? 'bg-warning/5 border-warning/20' : 'bg-danger/5 border-danger/20'}`}>
                          <div className="flex items-start gap-3">
-                            <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${d.status === 'correct' ? 'bg-success' : d.status === 'wrong' ? 'bg-danger' : 'bg-slate-400'}`}>{i+1}</div>
+                            <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold text-white ${d.points >= 4 ? 'bg-success' : d.points >= 2 ? 'bg-warning' : 'bg-danger'}`}>
+                               {d.points}/5
+                            </div>
                             <div className="flex-1 min-w-0">
                                <p className="font-medium text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{d.q.question}</p>
-                               <div className="mt-2 space-y-1">
-                                  {d.q.choices.map((c, ci) => {
-                                     const wasSelected = d.sel.includes(ci);
-                                     const isCorrectChoice = d.q.correct.includes(ci);
+                               <div className="mt-2 space-y-1.5">
+                                  {(d.q.choices || []).map((c, ci) => {
+                                     const isCorrectChoice = (d.q.correct || []).includes(ci);
+                                     const userMark = (d.marks || {})[ci] || null;
+                                     let pointResult = 0;
+                                     if(userMark === 'true') pointResult = isCorrectChoice ? 1 : -1;
+                                     else if(userMark === 'false') pointResult = isCorrectChoice ? -1 : 1;
+                                     const bgColor = pointResult === 1 ? 'bg-success/10 border-success/20' : pointResult === -1 ? 'bg-danger/10 border-danger/20' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700';
                                      return (
-                                        <div key={ci} className={`text-xs px-2 py-1 rounded-lg flex items-center gap-2 ${isCorrectChoice ? 'text-success font-bold' : wasSelected ? 'text-danger font-bold' : 'text-slate-400'}`}>
-                                           {isCorrectChoice ? <Icons.Check className="w-3 h-3"/> : wasSelected ? <Icons.X className="w-3 h-3"/> : <span className="w-3"/>}
-                                           {c}
+                                        <div key={ci} className={`text-xs px-2.5 py-1.5 rounded-lg border flex items-center gap-2 ${bgColor}`}>
+                                           <span className={`font-mono font-bold w-5 text-center ${pointResult === 1 ? 'text-success' : pointResult === -1 ? 'text-danger' : 'text-slate-300'}`}>
+                                              {pointResult === 1 ? '+1' : pointResult === -1 ? '-1' : ' 0'}
+                                           </span>
+                                           <span className="w-px h-3 bg-slate-200 dark:bg-slate-600"></span>
+                                           <span className={`font-bold ${isCorrectChoice ? 'text-success' : 'text-danger'}`}>{isCorrectChoice ? 'Wahr' : 'Falsch'}</span>
+                                           <span className="w-px h-3 bg-slate-200 dark:bg-slate-600"></span>
+                                           <span className="text-slate-600 dark:text-slate-300 flex-1">{c}</span>
                                         </div>
                                      );
                                   })}
@@ -909,15 +955,15 @@
     const QUESTIONS_PER_CATEGORY = 8;
     const TOTAL_EXAM_QUESTIONS = EXAM_CATEGORIES.length * QUESTIONS_PER_CATEGORY; // 56
 
-    const RealExamMode = ({ questions, onExit }) => {
+    const RealExamMode = ({ questions, onExit, onRecordStats }) => {
        const [phase, setPhase] = useState('setup'); // setup | running | review
        const [queue, setQueue] = useState([]);
        const [qIndex, setQIndex] = useState(0);
-       // answers: { [qIndex]: { [choiceIndex]: 'true' | 'false' | null } }
        const [answers, setAnswers] = useState({});
        const [currentMarks, setCurrentMarks] = useState({});
        const [timeLeft, setTimeLeft] = useState(0);
-       const [categoryMap, setCategoryMap] = useState([]); // tracks which category each question belongs to
+       const [categoryMap, setCategoryMap] = useState([]);
+       const [statsRecorded, setStatsRecorded] = useState(false);
        const timerRef = useRef(null);
 
        const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
@@ -1006,6 +1052,17 @@
           setAnswers(finalAnswers);
           setPhase('review');
        };
+
+       // Record stats when entering review phase
+       useEffect(() => {
+          if(phase === 'review' && !statsRecorded && queue.length > 0 && onRecordStats) {
+             let totalPts = 0;
+             const maxPts = queue.length * 5;
+             queue.forEach((q, i) => { totalPts += scoreQuestion(q, answers[i] || {}); });
+             onRecordStats(queue.length, totalPts, maxPts);
+             setStatsRecorded(true);
+          }
+       }, [phase, statsRecorded]);
 
        const getResults = () => {
           let totalPoints = 0;
@@ -1619,7 +1676,7 @@
        const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light"); // Default Dark
        const [trainFilter, setTrainFilter] = useState(null);
        const { questions, save, remove, status: qStatus } = useQuestions();
-       const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 });
+       const [userData, setUserData, pStatus] = useUserLocalStorage(activeUser?.id, "progress", { tiers: {}, score: 0, streak: 0 }, mergeProgress);
 
        // Daily Streak & Learning History hooks
        const { streakData, currentStreak, longestStreak, recordActivity, activeDays } = useDailyStreak(activeUser?.id);
@@ -1641,10 +1698,18 @@
        const startExam = () => setView('exam');
        const startRealExam = () => setView('realexam');
 
+       // Shared callback for exam modes to record stats
+       const handleExamRecordStats = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
+          if(questionsAnswered > 0) {
+             recordSession(questionsAnswered, totalPoints, totalMaxPoints);
+             recordActivity();
+          }
+       }, [recordSession, recordActivity]);
+
        if(!activeUser) return <ErrorBoundary><AuthScreen userManager={userManager} onLogin={setActiveUser} /></ErrorBoundary>;
        if(view === 'train') return <ErrorBoundary><TrainingMode questions={questions} userData={userData} setUserData={setUserData} onExit={handleTrainExit} filterTag={trainFilter} /></ErrorBoundary>;
-       if(view === 'exam') return <ErrorBoundary><ExamMode questions={questions} userData={userData} setUserData={setUserData} onExit={()=>setView('dashboard')} /></ErrorBoundary>;
-       if(view === 'realexam') return <ErrorBoundary><RealExamMode questions={questions} onExit={()=>setView('dashboard')} /></ErrorBoundary>;
+       if(view === 'exam') return <ErrorBoundary><ExamMode questions={questions} onExit={()=>setView('dashboard')} onRecordStats={handleExamRecordStats} /></ErrorBoundary>;
+       if(view === 'realexam') return <ErrorBoundary><RealExamMode questions={questions} onExit={()=>setView('dashboard')} onRecordStats={handleExamRecordStats} /></ErrorBoundary>;
 
        const NavItem = ({ id, icon: Icon, label }) => (
          <button onClick={()=>setView(id)} className={`relative p-3 rounded-2xl transition-all duration-300 flex flex-col items-center gap-1 ${view===id ? 'text-primary' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}>
