@@ -195,7 +195,17 @@
     function useUserLocalStorage(userId, key, initial, mergeFn){
       const storageKey = userId ? `${userId}:${key}` : null;
       const [state, setState] = useState(() => { try { return storageKey ? (JSON.parse(localStorage.getItem(storageKey)) || initial) : initial; } catch { return initial; } });
-      const [status, setStatus] = useState("local"); 
+      const [status, setStatus] = useState("local");
+      const prevKeyRef = useRef(storageKey);
+
+      // Reset state on user/key change to prevent cross-user data leakage
+      if(prevKeyRef.current !== storageKey) {
+        prevKeyRef.current = storageKey;
+        let loaded = initial;
+        try { if(storageKey) { const raw = localStorage.getItem(storageKey); if(raw) loaded = JSON.parse(raw); } } catch {}
+        setState(loaded);
+        setStatus("local");
+      }
 
       useEffect(() => { if(!userId) return; localStorage.setItem(storageKey, JSON.stringify(state)); }, [state, storageKey, userId]);
       useEffect(() => {
