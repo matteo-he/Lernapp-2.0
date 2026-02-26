@@ -73,7 +73,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script type="module">
     import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-    import { getFirestore, collection, doc, writeBatch, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+    import { getFirestore, collection, doc, writeBatch, onSnapshot, setDoc, getDoc, deleteField } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
     import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
     const firebaseConfig = {
@@ -97,7 +97,7 @@
     });
     
     window.FIREBASE_BRIDGE = {
-      ensureApp, getFirestore, collection, doc, writeBatch, onSnapshot, setDoc,
+      ensureApp, getFirestore, collection, doc, writeBatch, onSnapshot, setDoc, getDoc, deleteField,
       ensureAuthUser: () => authPromise,
       auth
     };
@@ -197,26 +197,80 @@
       const [state, setState] = useState(() => { try { return storageKey ? (JSON.parse(localStorage.getItem(storageKey)) || initial) : initial; } catch { return initial; } });
       const [status, setStatus] = useState("local");
       const prevKeyRef = useRef(storageKey);
+      const firebaseRef = useRef(null); // Tracks what Firebase currently has – prevents push loop
 
       // Reset state on user/key change to prevent cross-user data leakage
       if(prevKeyRef.current !== storageKey) {
         prevKeyRef.current = storageKey;
+        firebaseRef.current = null;
         let loaded = initial;
         try { if(storageKey) { const raw = localStorage.getItem(storageKey); if(raw) loaded = JSON.parse(raw); } } catch {}
         setState(loaded);
         setStatus("local");
       }
 
+      // Persist to localStorage
       useEffect(() => { if(!userId) return; localStorage.setItem(storageKey, JSON.stringify(state)); }, [state, storageKey, userId]);
+
+      // Subscribe to per-key Firestore document with legacy migration
       useEffect(() => {
          if(!userId || !window.FIREBASE_BRIDGE) return;
-         let unsub = () => {}; const { onSnapshot, doc, getFirestore, ensureApp, setDoc } = window.FIREBASE_BRIDGE; const db = getFirestore(ensureApp());
-         const sync = async () => { try { setStatus("syncing"); unsub = onSnapshot(doc(db, "userProgress", userId), (snap) => { if(snap.exists()) { const data = snap.data(); if(data[key]) { setState(prev => { if(JSON.stringify(prev) === JSON.stringify(data[key])) return prev; return mergeFn ? mergeFn(prev, data[key]) : data[key]; }); setStatus("synced"); } } else { setDoc(doc(db, "userProgress", userId), { [key]: state }, { merge: true }); setStatus("synced"); } }, (err) => { setStatus("error"); }); } catch(e) { setStatus("error"); } };
+         let unsub = () => {};
+         const { onSnapshot, doc, getFirestore, ensureApp, setDoc, getDoc } = window.FIREBASE_BRIDGE;
+         const db = getFirestore(ensureApp());
+         const keyDocRef = doc(db, "userProgress", `${userId}__${key}`);
+         const legacyDocRef = doc(db, "userProgress", userId);
+
+         const sync = async () => {
+           try {
+             setStatus("syncing");
+
+             // One-time migration: check if per-key doc exists, if not migrate from legacy
+             const keySnap = await getDoc(keyDocRef);
+             if(!keySnap.exists()) {
+               try {
+                 const legacySnap = await getDoc(legacyDocRef);
+                 if(legacySnap.exists() && legacySnap.data()[key] !== undefined) {
+                   const migrated = legacySnap.data()[key];
+                   await setDoc(keyDocRef, { v: migrated, _ts: Date.now() });
+                   // Clean up legacy key (best-effort)
+                   try { const { deleteField } = window.FIREBASE_BRIDGE; await setDoc(legacyDocRef, { [key]: deleteField() }, { merge: true }); } catch(e){}
+                 }
+               } catch(e){}
+             }
+
+             // Subscribe to per-key document
+             unsub = onSnapshot(keyDocRef, (snap) => {
+               if(snap.exists() && snap.data().v !== undefined) {
+                 const remoteData = snap.data().v;
+                 firebaseRef.current = remoteData;
+                 setState(prev => {
+                   if(JSON.stringify(prev) === JSON.stringify(remoteData)) return prev;
+                   return mergeFn ? mergeFn(prev, remoteData) : remoteData;
+                 });
+                 setStatus("synced");
+               } else if(!keySnap.exists()) {
+                 // New document – push current state
+                 setDoc(keyDocRef, { v: state, _ts: Date.now() });
+                 setStatus("synced");
+               }
+             }, (err) => { setStatus("error"); });
+           } catch(e) { setStatus("error"); }
+         };
          sync(); return () => unsub();
       }, [userId, key]);
+
+      // Push to Firebase – only when local state differs from what Firebase has
       useEffect(() => {
          if(status === 'error' || !userId || !window.FIREBASE_BRIDGE) return;
-         const timeout = setTimeout(() => { const { setDoc, doc, getFirestore, ensureApp } = window.FIREBASE_BRIDGE; setDoc(doc(getFirestore(ensureApp()), "userProgress", userId), { [key]: state }, { merge: true }).then(() => setStatus("synced")).catch(() => setStatus("error")); }, 1000);
+         // Skip push if state matches what Firebase already has (prevents push loop)
+         if(firebaseRef.current !== null && JSON.stringify(state) === JSON.stringify(firebaseRef.current)) return;
+         const timeout = setTimeout(() => {
+           const { setDoc, doc, getFirestore, ensureApp } = window.FIREBASE_BRIDGE;
+           setDoc(doc(getFirestore(ensureApp()), "userProgress", `${userId}__${key}`), { v: state, _ts: Date.now() })
+             .then(() => setStatus("synced"))
+             .catch(() => setStatus("error"));
+         }, 1000);
          return () => clearTimeout(timeout);
       }, [state, userId, key]);
       return [state, setState, status];
