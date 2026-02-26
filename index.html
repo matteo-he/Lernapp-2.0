@@ -179,6 +179,16 @@
        return Array.from(map.values()).sort((a,b) => a.date.localeCompare(b.date)).slice(-90);
     }
 
+    function mergeExamHistory(local, remote) {
+       const la = Array.isArray(local) ? local : [], ra = Array.isArray(remote) ? remote : [];
+       const map = new Map();
+       [...la, ...ra].forEach(e => {
+          const key = `${e.timestamp}_${e.mode}`;
+          if(!map.has(key)) map.set(key, e);
+       });
+       return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
+    }
+
     function mergeStreakData(local, remote) {
        if(!local || !remote) return remote || local || { activeDays: [], currentStreak: 0, longestStreak: 0 };
        const allDays = [...new Set([...(local.activeDays||[]), ...(remote.activeDays||[])])].sort().slice(-90);
@@ -379,6 +389,33 @@
        }, [setHistory]);
 
        return { history: history || [], recordSession };
+    }
+
+    function useExamHistory(userId) {
+       const [examHistory, setExamHistory, ehStatus] = useUserLocalStorage(userId, "examHistory", [], mergeExamHistory);
+
+       const recordExamResult = useCallback((mode, questionsAnswered, totalPoints, totalMaxPoints) => {
+          const percentage = totalMaxPoints > 0 ? Math.round((totalPoints / totalMaxPoints) * 100) : 0;
+          let grade = 'Nicht bestanden';
+          if(percentage >= 90) grade = 'Sehr gut';
+          else if(percentage >= 75) grade = 'Gut';
+          else if(percentage >= 60) grade = 'Befriedigend';
+          else if(percentage >= 50) grade = 'Bestanden';
+          const entry = {
+             timestamp: Date.now(),
+             date: todayKey(),
+             mode,
+             questionsAnswered,
+             totalPoints,
+             totalMaxPoints,
+             percentage,
+             passed: percentage >= 50,
+             grade
+          };
+          setExamHistory(prev => [...(prev || []), entry].slice(-100));
+       }, [setExamHistory]);
+
+       return { examHistory: examHistory || [], recordExamResult };
     }
 
     /* ================= UI COMPONENTS ================= */
@@ -791,7 +828,7 @@
              let totalPts = 0;
              const maxPts = queue.length * 5;
              queue.forEach((q, i) => { totalPts += scoreQuestion(q, answers[i] || {}); });
-             onRecordStats(queue.length, totalPts, maxPts);
+             onRecordStats('exam', queue.length, totalPts, maxPts);
              setStatsRecorded(true);
           }
        }, [phase, statsRecorded]);
@@ -1123,7 +1160,7 @@
              let totalPts = 0;
              const maxPts = queue.length * 5;
              queue.forEach((q, i) => { totalPts += scoreQuestion(q, answers[i] || {}); });
-             onRecordStats(queue.length, totalPts, maxPts);
+             onRecordStats('realexam', queue.length, totalPts, maxPts);
              setStatsRecorded(true);
           }
        }, [phase, statsRecorded]);
@@ -1568,7 +1605,7 @@
     };
 
     // --- Stats Screen ---
-    const StatsScreen = ({ history, streakData, currentStreak, longestStreak, activeDays, userData, questions }) => {
+    const StatsScreen = ({ history, examHistory, streakData, currentStreak, longestStreak, activeDays, userData, questions }) => {
        const last7 = useMemo(() => {
           const result = [];
           for(let i = 6; i >= 0; i--) {
@@ -1664,6 +1701,83 @@
                 <div className="text-[10px] text-slate-400 text-center">Zahl über Balken = Durchschnittspunkte pro Frage (max. 5)</div>
              </div>
 
+             {/* Exam Stats Section */}
+             {(() => {
+                const exams = (examHistory || []).filter(e => e.mode === 'exam');
+                const realExams = (examHistory || []).filter(e => e.mode === 'realexam');
+                const calcStats = (arr) => {
+                   if(arr.length === 0) return null;
+                   const avgPct = Math.round(arr.reduce((s, e) => s + e.percentage, 0) / arr.length);
+                   const passRate = Math.round(arr.filter(e => e.passed).length / arr.length * 100);
+                   const best = Math.max(...arr.map(e => e.percentage));
+                   const last = arr[arr.length - 1];
+                   return { count: arr.length, avgPct, passRate, best, last };
+                };
+                const examStats = calcStats(exams);
+                const realExamStats = calcStats(realExams);
+                if(!examStats && !realExamStats) return null;
+
+                const StatCard = ({ title, icon, gradient, stats, entries }) => (
+                   <div className="bg-surface-light dark:bg-surface-dark rounded-[2rem] border border-border-light dark:border-border-dark overflow-hidden">
+                      <div className={`bg-gradient-to-r ${gradient} p-5`}>
+                         <div className="flex items-center gap-3">
+                            {icon}
+                            <div>
+                               <h3 className="font-bold text-white text-sm">{title}</h3>
+                               <p className="text-white/70 text-xs">{stats.count} Prüfung{stats.count !== 1 ? 'en' : ''} absolviert</p>
+                            </div>
+                         </div>
+                      </div>
+                      <div className="p-5 space-y-4">
+                         <div className="grid grid-cols-3 gap-3">
+                            <div className="text-center">
+                               <div className={`text-2xl font-black ${stats.avgPct >= 50 ? 'text-success' : 'text-danger'}`}>{stats.avgPct}%</div>
+                               <div className="text-[10px] font-bold text-slate-400 uppercase">Durchschnitt</div>
+                            </div>
+                            <div className="text-center">
+                               <div className={`text-2xl font-black ${stats.passRate >= 50 ? 'text-success' : 'text-danger'}`}>{stats.passRate}%</div>
+                               <div className="text-[10px] font-bold text-slate-400 uppercase">Bestanden</div>
+                            </div>
+                            <div className="text-center">
+                               <div className="text-2xl font-black text-primary">{stats.best}%</div>
+                               <div className="text-[10px] font-bold text-slate-400 uppercase">Bestwert</div>
+                            </div>
+                         </div>
+                         {entries.length > 1 && (
+                            <div>
+                               <div className="text-[10px] font-bold text-slate-400 uppercase mb-2">Verlauf</div>
+                               <div className="flex items-end gap-1 h-16">
+                                  {entries.slice(-10).map((e, i) => (
+                                     <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                                        <div className={`w-full rounded-t transition-all ${e.passed ? 'bg-success' : 'bg-danger'}`}
+                                           style={{height: `${Math.max(8, (e.percentage / 100) * 100)}%`}}></div>
+                                        <span className="text-[8px] text-slate-400">{e.percentage}</span>
+                                     </div>
+                                  ))}
+                               </div>
+                            </div>
+                         )}
+                         <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl">
+                            <span className="text-[10px] text-slate-400">Letzte Prüfung:</span>
+                            <span className={`text-xs font-bold ${stats.last.passed ? 'text-success' : 'text-danger'}`}>{stats.last.grade}</span>
+                            <span className="text-[10px] text-slate-400">({stats.last.percentage}% · {new Date(stats.last.date + 'T00:00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })})</span>
+                         </div>
+                      </div>
+                   </div>
+                );
+
+                return (
+                   <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                         <Icons.Clipboard className="w-5 h-5 text-primary" />
+                         <h3 className="font-bold text-lg dark:text-white">Prüfungsstatistik</h3>
+                      </div>
+                      {examStats && <StatCard title="Übungsprüfung" icon={<Icons.Target className="w-6 h-6 text-white" />} gradient="from-warning to-danger" stats={examStats} entries={exams} />}
+                      {realExamStats && <StatCard title="Echte Prüfung" icon={<Icons.Clipboard className="w-6 h-6 text-white" />} gradient="from-red-600 to-red-900" stats={realExamStats} entries={realExams} />}
+                   </div>
+                );
+             })()}
+
              {/* Summary Cards */}
              <div className="grid grid-cols-2 gap-3">
                 <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-2xl border border-border-light dark:border-border-dark">
@@ -1745,6 +1859,7 @@
        // Daily Streak & Learning History hooks
        const { streakData, currentStreak, longestStreak, recordActivity, activeDays } = useDailyStreak(activeUser?.id);
        const { history, recordSession } = useLearningHistory(activeUser?.id);
+       const { examHistory, recordExamResult } = useExamHistory(activeUser?.id);
 
        useEffect(() => { if(darkMode) document.documentElement.classList.add("dark"); else document.documentElement.classList.remove("dark"); localStorage.setItem("theme", darkMode ? "dark" : "light"); }, [darkMode]);
 
@@ -1763,12 +1878,13 @@
        const startRealExam = () => setView('realexam');
 
        // Shared callback for exam modes to record stats
-       const handleExamRecordStats = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
+       const handleExamRecordStats = useCallback((mode, questionsAnswered, totalPoints, totalMaxPoints) => {
           if(questionsAnswered > 0) {
              recordSession(questionsAnswered, totalPoints, totalMaxPoints);
+             recordExamResult(mode, questionsAnswered, totalPoints, totalMaxPoints);
              recordActivity();
           }
-       }, [recordSession, recordActivity]);
+       }, [recordSession, recordExamResult, recordActivity]);
 
        if(!activeUser) return <ErrorBoundary><AuthScreen userManager={userManager} onLogin={setActiveUser} /></ErrorBoundary>;
        if(view === 'train') return <ErrorBoundary><TrainingMode questions={questions} userData={userData} setUserData={setUserData} onExit={handleTrainExit} filterTag={trainFilter} /></ErrorBoundary>;
@@ -1801,7 +1917,7 @@
 
              <main className="flex-1 max-w-lg mx-auto w-full">
                 {view === 'dashboard' && <Dashboard userData={userData} questions={questions} onStartTrain={startTraining} onStartExam={startExam} onStartRealExam={startRealExam} dailyStreak={currentStreak} />}
-                {view === 'stats' && <StatsScreen history={history} streakData={streakData} currentStreak={currentStreak} longestStreak={longestStreak} activeDays={activeDays} userData={userData} questions={questions} />}
+                {view === 'stats' && <StatsScreen history={history} examHistory={examHistory} streakData={streakData} currentStreak={currentStreak} longestStreak={longestStreak} activeDays={activeDays} userData={userData} questions={questions} />}
                 {view === 'admin' && <AdminPanel questions={questions} qManager={{save, remove}} />}
                 {view === 'profile' && <ProfileScreen user={activeUser} userManager={userManager} onLogout={()=>setActiveUser(null)} />}
              </main>
