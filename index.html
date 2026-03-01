@@ -202,12 +202,21 @@
     }
 
     /* ================= HOOKS ================= */
+    // Local-only storage (no Firestore sync) – used for device-local state like activeUser
+    function useLocalOnly(key, initial) {
+      const [state, setState] = useState(() => { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : initial; } catch { return initial; } });
+      useEffect(() => { if(state !== null) localStorage.setItem(key, JSON.stringify(state)); else localStorage.removeItem(key); }, [state, key]);
+      return [state, setState];
+    }
+
     function useUserLocalStorage(userId, key, initial, mergeFn){
       const storageKey = userId ? `${userId}:${key}` : null;
       const [state, setState] = useState(() => { try { return storageKey ? (JSON.parse(localStorage.getItem(storageKey)) || initial) : initial; } catch { return initial; } });
       const [status, setStatus] = useState("local");
       const prevKeyRef = useRef(storageKey);
       const firebaseRef = useRef(null); // Tracks what Firebase currently has – prevents push loop
+      const stateRef = useRef(state); // Always-current state for async callbacks
+      stateRef.current = state;
 
       // Reset state on user/key change to prevent cross-user data leakage
       if(prevKeyRef.current !== storageKey) {
@@ -260,8 +269,10 @@
                  });
                  setStatus("synced");
                } else if(!keySnap.exists()) {
-                 // New document – push current state
-                 setDoc(keyDocRef, { v: state, _ts: Date.now() });
+                 // New document – push current state (use ref for up-to-date value)
+                 const currentState = stateRef.current;
+                 firebaseRef.current = currentState;
+                 setDoc(keyDocRef, { v: currentState, _ts: Date.now() });
                  setStatus("synced");
                }
              }, (err) => { setStatus("error"); });
@@ -270,19 +281,21 @@
          sync(); return () => unsub();
       }, [userId, key]);
 
-      // Push to Firebase – only when local state differs from what Firebase has
+      // Push to Firebase – only after initial sync completes (status === "synced")
+      // This prevents stale localStorage data from overwriting newer Firestore data
       useEffect(() => {
-         if(status === 'error' || !userId || !window.FIREBASE_BRIDGE) return;
+         if(status !== 'synced' || !userId || !window.FIREBASE_BRIDGE) return;
          // Skip push if state matches what Firebase already has (prevents push loop)
          if(firebaseRef.current !== null && JSON.stringify(state) === JSON.stringify(firebaseRef.current)) return;
          const timeout = setTimeout(() => {
            const { setDoc, doc, getFirestore, ensureApp } = window.FIREBASE_BRIDGE;
-           setDoc(doc(getFirestore(ensureApp()), "userProgress", `${userId}__${key}`), { v: state, _ts: Date.now() })
-             .then(() => setStatus("synced"))
+           const pushValue = stateRef.current;
+           setDoc(doc(getFirestore(ensureApp()), "userProgress", `${userId}__${key}`), { v: pushValue, _ts: Date.now() })
+             .then(() => { firebaseRef.current = pushValue; setStatus("synced"); })
              .catch(() => setStatus("error"));
          }, 1000);
          return () => clearTimeout(timeout);
-      }, [state, userId, key]);
+      }, [state, userId, key, status]);
       return [state, setState, status];
     }
 
@@ -1849,7 +1862,7 @@
     /* ================= APP SHELL ================= */
     const App = () => {
        const userManager = useUsers();
-       const [activeUser, setActiveUser] = useUserLocalStorage("app", "activeUser", null);
+       const [activeUser, setActiveUser] = useLocalOnly("activeUser", null);
        const [view, setView] = useState("dashboard");
        const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light"); // Default Dark
        const [trainFilter, setTrainFilter] = useState(null);
