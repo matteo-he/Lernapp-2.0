@@ -1064,10 +1064,11 @@
        );
     };
 
-    // --- Real Exam Mode (Multiple True-False, 56 Questions, 7 Categories x 8) ---
-    const EXAM_CATEGORIES = ["BDG", "SPG", "StPO", "StGB", "Verkehr", "Verfassung", "Verwaltung"];
-    const QUESTIONS_PER_CATEGORY = 8;
-    const TOTAL_EXAM_QUESTIONS = EXAM_CATEGORIES.length * QUESTIONS_PER_CATEGORY; // 56
+    // --- Real Exam Mode (Multiple True-False, 54 Questions, 6 Categories x 9) ---
+    const EXAM_CATEGORIES = ["BDG", "SPG/StPO", "StGB", "Verkehr", "Verfassung", "Verwaltung"];
+    const QUESTIONS_PER_CATEGORY = 9;
+    const TOTAL_EXAM_QUESTIONS = EXAM_CATEGORIES.length * QUESTIONS_PER_CATEGORY; // 54
+    const EXAM_TIME_SECONDS = 70 * 60; // 70 minutes
 
     const RealExamMode = ({ questions, onExit, onRecordStats }) => {
        const [phase, setPhase] = useState('setup'); // setup | running | review
@@ -1082,10 +1083,16 @@
 
        const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
 
+       // Match questions to category (SPG/StPO matches both tags)
+       const matchesCategory = (q, cat) => {
+          if(cat === 'SPG/StPO') return q.tags?.some(t => ['spg', 'stpo'].includes(t.toLowerCase()));
+          return q.tags?.some(t => t.toLowerCase() === cat.toLowerCase());
+       };
+
        // Check availability
        const getCategoryAvailability = () => {
           return EXAM_CATEGORIES.map(cat => {
-             const pool = questions.filter(q => q.tags?.some(t => t.toLowerCase() === cat.toLowerCase()));
+             const pool = questions.filter(q => matchesCategory(q, cat));
              return { name: cat, available: pool.length, enough: pool.length >= QUESTIONS_PER_CATEGORY };
           });
        };
@@ -1096,20 +1103,22 @@
           const selectedQuestions = [];
           const catMapping = [];
           for(const cat of EXAM_CATEGORIES) {
-             const pool = questions.filter(q => q.tags?.some(t => t.toLowerCase() === cat.toLowerCase()));
+             const pool = questions.filter(q => matchesCategory(q, cat));
              const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, QUESTIONS_PER_CATEGORY);
              shuffled.forEach(q => {
                 selectedQuestions.push(q);
                 catMapping.push(cat);
              });
           }
-          setQueue(selectedQuestions);
-          setCategoryMap(catMapping);
+          // Randomize overall order (like real exam)
+          const indexed = selectedQuestions.map((q, i) => ({ q, cat: catMapping[i] }));
+          indexed.sort(() => Math.random() - 0.5);
+          setQueue(indexed.map(x => x.q));
+          setCategoryMap(indexed.map(x => x.cat));
           setQIndex(0);
           setAnswers({});
           setCurrentMarks({});
-          // 60 seconds per question = 56 minutes total
-          setTimeLeft(TOTAL_EXAM_QUESTIONS * 60);
+          setTimeLeft(EXAM_TIME_SECONDS);
           setPhase('running');
        };
 
@@ -1137,27 +1146,16 @@
           });
        };
 
-       const saveAndGo = (targetIndex) => {
-          const newAnswers = { ...answers, [qIndex]: { ...currentMarks } };
-          setAnswers(newAnswers);
-          setQIndex(targetIndex);
-          setCurrentMarks(newAnswers[targetIndex] || {});
-       };
-
        const goNext = () => {
           const newAnswers = { ...answers, [qIndex]: { ...currentMarks } };
           setAnswers(newAnswers);
           if(qIndex < queue.length - 1) {
              const nextIdx = qIndex + 1;
              setQIndex(nextIdx);
-             setCurrentMarks(newAnswers[nextIdx] || {});
+             setCurrentMarks({});
           } else {
              finishExam();
           }
-       };
-
-       const goPrev = () => {
-          if(qIndex > 0) saveAndGo(qIndex - 1);
        };
 
        const finishExam = () => {
@@ -1180,7 +1178,7 @@
 
        const getResults = () => {
           let totalPoints = 0;
-          const maxPoints = queue.length * 5; // 280
+          const maxPoints = queue.length * 5; // 270
           const perCategory = {};
           EXAM_CATEGORIES.forEach(c => { perCategory[c] = { points: 0, max: QUESTIONS_PER_CATEGORY * 5, questions: [] }; });
 
@@ -1218,7 +1216,7 @@
                          <Icons.Clipboard className="w-10 h-10 text-white" />
                       </div>
                       <h2 className="text-2xl font-black dark:text-white">Echte Prüfung</h2>
-                      <p className="text-slate-500 text-sm">56 Fragen · 7 Fachbereiche · Multiple True-False</p>
+                      <p className="text-slate-500 text-sm">54 Fragen · 6 Fachbereiche · 70 Minuten</p>
                    </div>
 
                    {/* Rules */}
@@ -1228,13 +1226,14 @@
                          <div className="flex gap-2"><span className="font-bold text-slate-400">1.</span> Jede Frage hat 5 Aussagen. Bewerte jede als <span className="text-success font-bold">Richtig</span> oder <span className="text-danger font-bold">Falsch</span>.</div>
                          <div className="flex gap-2"><span className="font-bold text-slate-400">2.</span> Korrekte Bewertung: <span className="font-bold text-success">+1 Punkt</span>. Falsche Bewertung: <span className="font-bold text-danger">-1 Punkt</span>. Keine Bewertung: <span className="font-bold text-slate-400">0 Punkte</span>.</div>
                          <div className="flex gap-2"><span className="font-bold text-slate-400">3.</span> Minimum pro Frage: 0 Punkte (kein Negativsaldo).</div>
-                         <div className="flex gap-2"><span className="font-bold text-slate-400">4.</span> Maximalpunktzahl: <span className="font-bold text-primary">280 Punkte</span> (56 × 5).</div>
+                         <div className="flex gap-2"><span className="font-bold text-slate-400">4.</span> Maximalpunktzahl: <span className="font-bold text-primary">270 Punkte</span> (54 × 5).</div>
+                         <div className="flex gap-2"><span className="font-bold text-slate-400">5.</span> Kein Zurückspringen zu bereits beantworteten Fragen.</div>
                       </div>
                    </div>
 
                    {/* Category availability */}
                    <div className="bg-surface-light dark:bg-surface-dark p-5 rounded-3xl border border-border-light dark:border-border-dark space-y-3">
-                      <h3 className="font-bold text-sm dark:text-white">Fachbereiche (je 8 Fragen)</h3>
+                      <h3 className="font-bold text-sm dark:text-white">Fachbereiche (je {QUESTIONS_PER_CATEGORY} Fragen)</h3>
                       <div className="space-y-2">
                          {availability.map(cat => (
                             <div key={cat.name} className="flex items-center justify-between">
@@ -1249,8 +1248,8 @@
 
                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl text-center">
                       <span className="text-xs text-slate-400">Zeitlimit: </span>
-                      <span className="font-bold text-primary">{formatTime(TOTAL_EXAM_QUESTIONS * 60)}</span>
-                      <span className="text-xs text-slate-400 ml-1">(60 Sek./Frage)</span>
+                      <span className="font-bold text-primary">{formatTime(EXAM_TIME_SECONDS)}</span>
+                      <span className="text-xs text-slate-400 ml-1">(70 Minuten)</span>
                    </div>
 
                    <div className="space-y-3">
@@ -1268,9 +1267,6 @@
        if(phase === 'running') {
           const currentQ = queue[qIndex];
           const currentCat = categoryMap[qIndex];
-          // Calculate which question number within the category
-          const catStartIdx = EXAM_CATEGORIES.indexOf(currentCat) * QUESTIONS_PER_CATEGORY;
-          const catQNum = qIndex - catStartIdx + 1;
           const answeredCount = Object.keys(answers).filter(k => {
              const m = answers[k] || {};
              return Object.values(m).some(v => v !== null);
@@ -1294,7 +1290,7 @@
                       </button>
                    </div>
                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{currentCat} ({catQNum}/{QUESTIONS_PER_CATEGORY})</span>
+                      <span className="font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{currentCat}</span>
                       <span className="text-slate-400 font-medium">Frage {qIndex + 1} / {queue.length} · {answeredCount} bewertet</span>
                    </div>
                    <SegmentedProgress current={qIndex} total={queue.length} />
@@ -1332,32 +1328,10 @@
 
                 {/* Navigation */}
                 <div className="fixed bottom-0 left-0 w-full p-4 bg-gradient-to-t from-bg-light dark:from-bg-dark via-bg-light dark:via-bg-dark to-transparent safe-pb">
-                   <div className="max-w-xl mx-auto space-y-3">
-                      <div className="flex gap-2">
-                         <Button variant="outline" onClick={goPrev} disabled={qIndex === 0} className="flex-1">Zurück</Button>
-                         <Button onClick={goNext} className="flex-1">
-                            {qIndex === queue.length - 1 ? 'Abgeben' : 'Weiter'}
-                         </Button>
-                      </div>
-                      {/* Category section indicators */}
-                      <div className="flex gap-1 justify-center">
-                         {EXAM_CATEGORIES.map((cat, catIdx) => {
-                            const startIdx = catIdx * QUESTIONS_PER_CATEGORY;
-                            const isCurrentCat = currentCat === cat;
-                            const catAnswered = Array.from({length: QUESTIONS_PER_CATEGORY}, (_, i) => {
-                               const idx = startIdx + i;
-                               if(idx === qIndex) return Object.values(currentMarks).some(v => v !== null);
-                               const m = answers[idx] || {};
-                               return Object.values(m).some(v => v !== null);
-                            }).filter(Boolean).length;
-                            return (
-                               <button key={cat} onClick={() => saveAndGo(startIdx)}
-                                  className={`px-2 py-1 rounded-lg text-[9px] font-bold transition-all ${isCurrentCat ? 'bg-primary text-white scale-105' : catAnswered === QUESTIONS_PER_CATEGORY ? 'bg-success/20 text-success border border-success/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                                  {cat} {catAnswered > 0 && <span className="opacity-70">{catAnswered}/{QUESTIONS_PER_CATEGORY}</span>}
-                               </button>
-                            );
-                         })}
-                      </div>
+                   <div className="max-w-xl mx-auto">
+                      <Button onClick={goNext} fullWidth>
+                         {qIndex === queue.length - 1 ? 'Abgeben' : 'Weiter'}
+                      </Button>
                    </div>
                 </div>
              </div>
@@ -1366,7 +1340,7 @@
 
        // --- REVIEW ---
        const results = getResults();
-       const categoryColors = { "BDG": "from-orange-400 to-red-500", "SPG": "from-blue-400 to-indigo-500", "StPO": "from-pink-400 to-rose-500", "StGB": "from-purple-500 to-violet-700", "Verkehr": "from-amber-400 to-orange-500", "Verfassung": "from-cyan-400 to-blue-600", "Verwaltung": "from-emerald-400 to-teal-500" };
+       const categoryColors = { "BDG": "from-orange-400 to-red-500", "SPG/StPO": "from-blue-400 to-indigo-500", "StGB": "from-purple-500 to-violet-700", "Verkehr": "from-amber-400 to-orange-500", "Verfassung": "from-cyan-400 to-blue-600", "Verwaltung": "from-emerald-400 to-teal-500" };
 
        return (
           <div className="min-h-screen bg-bg-light dark:bg-bg-dark p-6 pb-32 animate-fade-in">
