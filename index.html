@@ -1883,14 +1883,14 @@
        const [lastPoints, setLastPoints] = useState(0);
        const [lostLife, setLostLife] = useState(false);
        const [newHighscore, setNewHighscore] = useState(false);
-       const sessionRef = useRef({ total: 0 });
+       const sessionRef = useRef({ total: 0, points: 0, maxPoints: 0 });
 
        const start = () => {
           const getTier = (id) => (userData.tiers || {})[id] || 1;
           const newQueue = weightedOrder([...questions], getTier, "survival-" + Date.now());
           setQueue(newQueue); setQIndex(0); setLives(MAX_LIVES); setScore(0);
           setCurrentMarks({}); setLostLife(false); setNewHighscore(false);
-          sessionRef.current = { total: 0 };
+          sessionRef.current = { total: 0, points: 0, maxPoints: 0 };
           setPhase('playing');
        };
 
@@ -1899,6 +1899,8 @@
           const points = scoreQuestion(currentQ, currentMarks);
           setLastPoints(points);
           sessionRef.current.total += 1;
+          sessionRef.current.points += points;
+          sessionRef.current.maxPoints += (currentQ.choices || []).length;
           const newTiers = { ...(userData.tiers || {}) };
           const curTier = newTiers[currentQ.id] || 1;
           const correct = points >= 4;
@@ -1977,7 +1979,7 @@
                       <Button size="lg" fullWidth onClick={start} className="bg-gradient-to-r from-danger to-accent border-0 shadow-xl shadow-danger/30 text-white">
                          {isGameOver ? 'Nochmal' : 'Starten'}
                       </Button>
-                      <Button variant="ghost" fullWidth onClick={() => onExit(sessionRef.current.total)}>Zur Übersicht</Button>
+                      <Button variant="ghost" fullWidth onClick={() => onExit(sessionRef.current.total, sessionRef.current.points, sessionRef.current.maxPoints)}>Zur Übersicht</Button>
                    </div>
                 </div>
              </div>
@@ -1990,7 +1992,7 @@
        return (
           <div className="h-screen flex flex-col bg-bg-light dark:bg-bg-dark relative overflow-hidden">
              <div className="px-6 pt-12 pb-4 flex items-center justify-between">
-                <button onClick={() => onExit(sessionRef.current.total)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Icons.X className="w-6 h-6"/></button>
+                <button onClick={() => onExit(sessionRef.current.total, sessionRef.current.points, sessionRef.current.maxPoints)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Icons.X className="w-6 h-6"/></button>
                 <div className="flex gap-1.5">
                    {Array.from({length: MAX_LIVES}).map((_, i) => (
                       <span key={i} className={`text-2xl transition-all duration-300 ${i < lives ? '' : 'opacity-20 grayscale'}`}>❤️</span>
@@ -2116,10 +2118,13 @@
        const startRealExam = () => setView('realexam');
        const startSurvival = () => setView('survival');
 
-       const handleSurvivalExit = useCallback((questionsAnswered) => {
-          if(questionsAnswered > 0) recordActivity();
+       const handleSurvivalExit = useCallback((questionsAnswered, totalPoints, totalMaxPoints) => {
+          if(questionsAnswered > 0) {
+             recordSession(questionsAnswered, totalPoints || 0, totalMaxPoints || 0);
+             recordActivity();
+          }
           setView('dashboard');
-       }, [recordActivity]);
+       }, [recordSession, recordActivity]);
 
        // Shared callback for exam modes to record stats
        const handleExamRecordStats = useCallback((mode, questionsAnswered, totalPoints, totalMaxPoints) => {
