@@ -134,7 +134,8 @@
       Calendar: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>,
       TrendingUp: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>,
       Clipboard: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>,
-      Minus: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Minus: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" {...props}><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+      Search: (props) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     };
 
     /* ================= UTILS & LOGIC ================= */
@@ -1632,6 +1633,82 @@
        );
     };
 
+    // --- Search Screen ---
+    const SearchScreen = ({ questions, userData, onStartTrain }) => {
+       const [search, setSearch] = React.useState('');
+
+       const lawStats = React.useMemo(() => {
+          const map = {};
+          (questions || []).forEach(q => {
+             (q.tags || []).forEach(tag => {
+                if(!map[tag]) map[tag] = { count: 0, mastered: 0, working: 0, new: 0 };
+                const tier = (userData.tiers || {})[q.id] || 1;
+                map[tag].count++;
+                if(tier >= 4) map[tag].mastered++;
+                else if(tier >= 2) map[tag].working++;
+                else map[tag].new++;
+             });
+          });
+          return Object.entries(map).map(([name, stats]) => ({ name, ...stats })).sort((a,b) => a.name.localeCompare(b.name));
+       }, [questions, userData.tiers]);
+
+       const filtered = search.trim()
+          ? lawStats.filter(l => l.name.toLowerCase().includes(search.toLowerCase()))
+          : lawStats;
+
+       return (
+          <div className="px-6 py-4 space-y-4 pb-28">
+             <h2 className="text-2xl font-black dark:text-white">Gesetze</h2>
+             <div className="relative">
+                <Icons.Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                   type="text"
+                   placeholder="Gesetz suchen (z.B. SPG, AHG...)"
+                   value={search}
+                   onChange={e => setSearch(e.target.value)}
+                   className="w-full pl-10 pr-4 py-3 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-2xl text-sm dark:text-white placeholder-slate-400 focus:outline-none focus:border-primary"
+                />
+             </div>
+             <div className="space-y-3">
+                {filtered.map(law => {
+                   const progress = law.count > 0 ? Math.round((law.mastered / law.count) * 100) : 0;
+                   return (
+                      <button key={law.name} onClick={() => onStartTrain(law.name)} className="group w-full bg-surface-light dark:bg-surface-dark p-4 rounded-[1.5rem] border border-border-light dark:border-border-dark flex flex-col gap-3 transition-all hover:border-primary active:scale-98 text-left shadow-sm">
+                         <div className="flex items-center gap-3 w-full">
+                            <div className="flex-1">
+                               <div className="flex justify-between items-center">
+                                  <span className="font-bold text-slate-700 dark:text-slate-200">{law.name}</span>
+                                  <span className="text-[10px] font-black text-primary dark:text-primary-light bg-primary/10 px-2 py-0.5 rounded-full">{progress}%</span>
+                               </div>
+                               <span className="text-xs text-slate-400">{law.count} Fragen</span>
+                            </div>
+                            <Icons.ArrowRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
+                         </div>
+                         <div className="grid grid-cols-3 gap-2 w-full">
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg">
+                               <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
+                               <span className="text-[10px] font-bold text-danger/80">{law.new} neu</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg">
+                               <div className="w-1.5 h-1.5 rounded-full bg-warning"></div>
+                               <span className="text-[10px] font-bold text-warning/80">{law.working} wip</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg">
+                               <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
+                               <span className="text-[10px] font-bold text-success/80">{law.mastered} ok</span>
+                            </div>
+                         </div>
+                      </button>
+                   );
+                })}
+                {filtered.length === 0 && (
+                   <p className="text-center text-slate-400 py-8 text-sm">Kein Gesetz gefunden</p>
+                )}
+             </div>
+          </div>
+       );
+    };
+
     // --- Stats Screen ---
     const StatsScreen = ({ history, examHistory, streakData, currentStreak, longestStreak, activeDays, userData, questions }) => {
        const last7 = useMemo(() => {
@@ -2172,6 +2249,7 @@
 
              <main className="flex-1 max-w-lg mx-auto w-full">
                 {view === 'dashboard' && <Dashboard userData={userData} questions={questions} onStartTrain={startTraining} onStartExam={startExam} onStartRealExam={startRealExam} onStartSurvival={startSurvival} dailyStreak={currentStreak} />}
+                {view === 'search' && <SearchScreen questions={questions} userData={userData} onStartTrain={startTraining} />}
                 {view === 'stats' && <StatsScreen history={history} examHistory={examHistory} streakData={streakData} currentStreak={currentStreak} longestStreak={longestStreak} activeDays={activeDays} userData={userData} questions={questions} />}
                 {view === 'admin' && <AdminPanel questions={questions} qManager={{save, remove}} />}
                 {view === 'profile' && <ProfileScreen user={activeUser} userManager={userManager} onLogout={()=>setActiveUser(null)} />}
@@ -2180,6 +2258,8 @@
              <div className="fixed bottom-6 left-0 w-full flex justify-center z-50 px-4 safe-pb">
                 <nav className="glass bg-white/80 dark:bg-slate-900/80 px-6 py-2 rounded-full shadow-2xl border border-white/20 dark:border-slate-700/50 flex items-center gap-6 backdrop-blur-xl">
                    <NavItem id="dashboard" icon={Icons.Home} />
+                   <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
+                   <NavItem id="search" icon={Icons.Search} />
                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
                    <NavItem id="stats" icon={Icons.BarChart} />
                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
