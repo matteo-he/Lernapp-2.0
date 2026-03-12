@@ -640,12 +640,14 @@
        useEffect(() => {
           if(!questions || queue.length > 0) return;
           setLoading(true);
+          const matchesTag = (q, tag) => q.tags && q.tags.some(t => t.toLowerCase() === tag.toLowerCase());
           let pool = questions;
           if(filterTag) {
             if(typeof filterTag === 'string') {
-               pool = pool.filter(q => q.tags && q.tags.some(t => t.toLowerCase() === filterTag.toLowerCase()));
+               pool = pool.filter(q => matchesTag(q, filterTag));
             } else if (typeof filterTag === 'object') {
                const getTier = (id) => (userData.tiers||{})[id] || 1;
+               if(filterTag.category) pool = pool.filter(q => matchesTag(q, filterTag.category));
                if(filterTag.status === 'new') pool = pool.filter(q => getTier(q.id) === 1);
                if(filterTag.status === 'wip') pool = pool.filter(q => getTier(q.id) > 1 && getTier(q.id) < 4);
                if(filterTag.status === 'mastered') pool = pool.filter(q => getTier(q.id) >= 4);
@@ -691,7 +693,10 @@
             <div className="flex-1 overflow-y-auto px-6 pb-44">
                <div className="max-w-xl mx-auto space-y-6 py-4 animate-slide-up">
                   <div className="space-y-2">
-                     <span className="text-xs font-bold uppercase tracking-wider text-primary dark:text-primary-light/80">Level {(userData.tiers||{})[currentQ.id] || 1}</span>
+                     <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-primary dark:text-primary-light/80">Level {(userData.tiers||{})[currentQ.id] || 1}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">{currentQ.id}</span>
+                     </div>
                      <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">{currentQ.question}</h2>
                      {!feedbackMode && <p className="text-[10px] font-bold text-slate-400 uppercase">Bewerte jede Aussage als Richtig oder Falsch:</p>}
                   </div>
@@ -1605,18 +1610,18 @@
                            
                            {/* Sub-stats for category */}
                            <div className="grid grid-cols-3 gap-2 w-full pt-1">
-                              <div className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg">
+                              <button onClick={(e) => { e.stopPropagation(); onStartTrain({category: cat.name, status: 'new'}); }} className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg hover:bg-danger/20 transition-colors">
                                  <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
                                  <span className="text-[10px] font-bold text-danger/80">{stats.new} neu</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg">
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); onStartTrain({category: cat.name, status: 'wip'}); }} className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg hover:bg-warning/20 transition-colors">
                                  <div className="w-1.5 h-1.5 rounded-full bg-warning"></div>
                                  <span className="text-[10px] font-bold text-warning/80">{stats.working} wip</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg">
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); onStartTrain({category: cat.name, status: 'mastered'}); }} className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg hover:bg-success/20 transition-colors">
                                  <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
                                  <span className="text-[10px] font-bold text-success/80">{stats.mastered} ok</span>
-                              </div>
+                              </button>
                            </div>
                         </button>
                      );
