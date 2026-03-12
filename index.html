@@ -139,6 +139,7 @@
     };
 
     /* ================= UTILS & LOGIC ================= */
+    const parseLawName = (lawRef) => lawRef ? lawRef.split('§')[0].trim() : '';
     const clone = (o) => JSON.parse(JSON.stringify(o));
     const generateId = (p="id") => `${p}-${Math.random().toString(36).slice(2,8)}`;
     const hashPassword = (s) => `h${s.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a|0},0)}`;
@@ -645,8 +646,7 @@
              const t = tag.toLowerCase();
              if (q.tags && q.tags.some(x => x.toLowerCase() === t)) return true;
              if (q.law_ref) {
-                const lawName = q.law_ref.split('§')[0].trim().toLowerCase();
-                if (lawName === t) return true;
+                if (parseLawName(q.law_ref).toLowerCase() === t) return true;
              }
              return false;
           };
@@ -1641,6 +1641,24 @@
        );
     };
 
+    // --- Shared: Stat Badges (neu / wip / ok) ---
+    const StatBadges = ({ newCount, working, mastered }) => (
+       <div className="grid grid-cols-3 gap-2 w-full">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg">
+             <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
+             <span className="text-[10px] font-bold text-danger/80">{newCount} neu</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg">
+             <div className="w-1.5 h-1.5 rounded-full bg-warning"></div>
+             <span className="text-[10px] font-bold text-warning/80">{working} wip</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg">
+             <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
+             <span className="text-[10px] font-bold text-success/80">{mastered} ok</span>
+          </div>
+       </div>
+    );
+
     // --- Search Screen ---
     const SearchScreen = ({ questions, userData, onStartTrain }) => {
        const [search, setSearch] = React.useState('');
@@ -1659,10 +1677,8 @@
              const tier = (userData.tiers || {})[q.id] || 1;
              const seen = new Set();
              (q.tags || []).forEach(tag => { if(!seen.has(tag)) { seen.add(tag); addEntry(tag, q, tier); } });
-             if(q.law_ref) {
-                const lawName = q.law_ref.split('§')[0].trim();
-                if(lawName && !seen.has(lawName)) { seen.add(lawName); addEntry(lawName, q, tier); }
-             }
+             const lawName = parseLawName(q.law_ref);
+             if(lawName && !seen.has(lawName)) { seen.add(lawName); addEntry(lawName, q, tier); }
           });
           return Object.entries(map).map(([name, stats]) => ({ name, ...stats })).sort((a,b) => a.name.localeCompare(b.name));
        }, [questions, userData.tiers]);
@@ -1699,20 +1715,7 @@
                             </div>
                             <Icons.ArrowRight className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
                          </div>
-                         <div className="grid grid-cols-3 gap-2 w-full">
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-danger/5 dark:bg-danger/10 border border-danger/10 rounded-lg">
-                               <div className="w-1.5 h-1.5 rounded-full bg-danger"></div>
-                               <span className="text-[10px] font-bold text-danger/80">{law.new} neu</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-warning/5 dark:bg-warning/10 border border-warning/10 rounded-lg">
-                               <div className="w-1.5 h-1.5 rounded-full bg-warning"></div>
-                               <span className="text-[10px] font-bold text-warning/80">{law.working} wip</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-2 py-1 bg-success/5 dark:bg-success/10 border border-success/10 rounded-lg">
-                               <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
-                               <span className="text-[10px] font-bold text-success/80">{law.mastered} ok</span>
-                            </div>
-                         </div>
+                         <StatBadges newCount={law.new} working={law.working} mastered={law.mastered} />
                       </button>
                    );
                 })}
