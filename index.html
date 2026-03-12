@@ -641,7 +641,15 @@
        useEffect(() => {
           if(!questions || queue.length > 0) return;
           setLoading(true);
-          const matchesTag = (q, tag) => q.tags && q.tags.some(t => t.toLowerCase() === tag.toLowerCase());
+          const matchesTag = (q, tag) => {
+             const t = tag.toLowerCase();
+             if (q.tags && q.tags.some(x => x.toLowerCase() === t)) return true;
+             if (q.law_ref) {
+                const lawName = q.law_ref.split('§')[0].trim().toLowerCase();
+                if (lawName === t) return true;
+             }
+             return false;
+          };
           let pool = questions;
           if(filterTag) {
             if(typeof filterTag === 'string') {
@@ -1639,15 +1647,22 @@
 
        const lawStats = React.useMemo(() => {
           const map = {};
+          const addEntry = (key, q, tier) => {
+             if(!key) return;
+             if(!map[key]) map[key] = { count: 0, mastered: 0, working: 0, new: 0 };
+             map[key].count++;
+             if(tier >= 4) map[key].mastered++;
+             else if(tier >= 2) map[key].working++;
+             else map[key].new++;
+          };
           (questions || []).forEach(q => {
-             (q.tags || []).forEach(tag => {
-                if(!map[tag]) map[tag] = { count: 0, mastered: 0, working: 0, new: 0 };
-                const tier = (userData.tiers || {})[q.id] || 1;
-                map[tag].count++;
-                if(tier >= 4) map[tag].mastered++;
-                else if(tier >= 2) map[tag].working++;
-                else map[tag].new++;
-             });
+             const tier = (userData.tiers || {})[q.id] || 1;
+             const seen = new Set();
+             (q.tags || []).forEach(tag => { if(!seen.has(tag)) { seen.add(tag); addEntry(tag, q, tier); } });
+             if(q.law_ref) {
+                const lawName = q.law_ref.split('§')[0].trim();
+                if(lawName && !seen.has(lawName)) { seen.add(lawName); addEntry(lawName, q, tier); }
+             }
           });
           return Object.entries(map).map(([name, stats]) => ({ name, ...stats })).sort((a,b) => a.name.localeCompare(b.name));
        }, [questions, userData.tiers]);
